@@ -14,4 +14,6 @@ class PROJECT48_API AP48GameModeBase : public AGameModeBase
 {
 	GENERATED_BODY()
 	
+public:
+	virtual void OnPostLogin(AController* NewPlayer) override;
 };
