@@ -16,4 +16,20 @@ class PROJECT48_API AP48GameModeBase : public AGameModeBase
 	
 public:
 	virtual void OnPostLogin(AController* NewPlayer) override;
+	
+protected:
+	
+	/* 게임 시작에 필요한 최소 인원 */
+	UPROPERTY(EditDefaultsOnly, Category = "Match")
+	int32 MinPlayersToStart = 2;
+	
+	/* 카운트 다운 시간 */
+	UPROPERTY(EditDefaultsOnly, Category = "Match")
+	float CountdownDuration = 3.0f;
+	
+	FTimerHandle CountdownTimerHandle;
+	
+	void CheckStartCondition();
+	void StartCountdown();
+	void StartMatch();
 };
