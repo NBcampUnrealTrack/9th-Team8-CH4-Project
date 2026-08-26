@@ -16,6 +16,27 @@ void AP48GameModeBase::OnPostLogin(AController* NewPlayer)
 	CheckStartCondition();
 }
 
+void AP48GameModeBase::Logout(AController* Exit)
+{
+	const FString ExistingPlayerName = GetNameSafe(Exit);
+	const int32 RemainingPlayerCount = FMath::Max(0, GetNumPlayers() - 1);
+	Super::Logout(Exit);
+	
+	UE_LOG(LogTemp, Warning, TEXT("Player Logout: %s"), *ExistingPlayerName);
+	UE_LOG(LogTemp, Warning, TEXT("Remaining Player Count: %d"), RemainingPlayerCount);
+	
+	// 카운트다운 중 플레이어 수가 최소 시작 플레이어 수 보다 적어진다면 타이머 리셋 및 MatchPhase Waiting으로 변경
+	AP48GameStateBase* P48GameState = GetGameState<AP48GameStateBase>();
+	if (IsValid(P48GameState) == true
+		&& P48GameState->MatchPhase == EP48MatchPhase::Countdown
+		&& RemainingPlayerCount < MinPlayersToStart)
+	{
+		GetWorldTimerManager().ClearTimer(CountdownTimerHandle);
+		P48GameState->SetMatchPhase(EP48MatchPhase::Waiting);
+		UE_LOG(LogTemp, Warning, TEXT("[Server] Countdown canceled: not enough players!"));
+	}
+}
+
 void AP48GameModeBase::CheckStartCondition()
 {
 	if (GetNumPlayers() < MinPlayersToStart)

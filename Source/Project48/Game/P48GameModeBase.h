@@ -16,6 +16,7 @@ class PROJECT48_API AP48GameModeBase : public AGameModeBase
 	
 public:
 	virtual void OnPostLogin(AController* NewPlayer) override;
+	virtual void Logout(AController* Exit) override;
 	
 protected:
 	
