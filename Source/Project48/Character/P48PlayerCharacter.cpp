@@ -1,30 +1,22 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+﻿#include "P48PlayerCharacter.h"
 
+#include "Components/CapsuleComponent.h"
 
-#include "P48PlayerCharacter.h"
-
-
-// Sets default values
 AP48PlayerCharacter::AP48PlayerCharacter()
 {
-	// Set this character to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
-	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bCanEverTick = false;
+	
+	GetCapsuleComponent()->InitCapsuleSize(34.f, 65.f);
+	
+	GetMesh()->SetRelativeRotation(FRotator(0.f, -90.f, 0.f));
+	GetMesh()->SetRelativeLocation(FVector(0.f, 0.f, -65.f));
 }
 
-// Called when the game starts or when spawned
 void AP48PlayerCharacter::BeginPlay()
 {
 	Super::BeginPlay();
-	
 }
 
-// Called every frame
-void AP48PlayerCharacter::Tick(float DeltaTime)
-{
-	Super::Tick(DeltaTime);
-}
-
-// Called to bind functionality to input
 void AP48PlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
