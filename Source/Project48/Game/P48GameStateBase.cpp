@@ -23,6 +23,7 @@ void AP48GameStateBase::GetLifetimeReplicatedProps(
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	
 	DOREPLIFETIME(AP48GameStateBase, MatchPhase);
+	DOREPLIFETIME(AP48GameStateBase, CurrentRound);
 }
 
 void AP48GameStateBase::SetMatchPhase(EP48MatchPhase NewMatchPhase)
@@ -33,4 +34,21 @@ void AP48GameStateBase::SetMatchPhase(EP48MatchPhase NewMatchPhase)
 	}
 	
 	MatchPhase = NewMatchPhase;
+}
+
+void AP48GameStateBase::SetCurrentRound(int32 NewCurrentRound)
+{
+	if (HasAuthority() == false)
+	{
+		return;
+	}
+	
+	if (CurrentRound == NewCurrentRound)
+	{
+		return;
+	}
+	
+	CurrentRound = NewCurrentRound;
+	
+	UE_LOG(LogTemp, Warning, TEXT("[Server] CurrentRound: %d"), CurrentRound);
 }

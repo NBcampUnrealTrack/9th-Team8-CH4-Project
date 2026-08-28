@@ -35,6 +35,11 @@ public:
 	
 	void SetMatchPhase(EP48MatchPhase NewMatchPhase);
 	
+	void SetCurrentRound(int32 NewCurrentRound);
+	
 	UPROPERTY(Replicated, BlueprintReadOnly)
 	EP48MatchPhase MatchPhase = EP48MatchPhase::Waiting;
+	
+	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Round")
+	int32 CurrentRound = 0;
 };
