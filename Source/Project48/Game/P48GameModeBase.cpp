@@ -87,6 +87,11 @@ void AP48GameModeBase::StartMatch()
 		return;
 	}
 	
+	if (P48GameState->CurrentRound == 0)
+	{
+		P48GameState->SetCurrentRound(1);
+	}
+	
 	P48GameState->SetMatchPhase(EP48MatchPhase::Playing);
 	
 	UE_LOG(LogTemp,Warning,TEXT("[Server] Match started"));
