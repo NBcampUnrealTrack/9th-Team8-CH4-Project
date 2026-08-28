@@ -7,6 +7,7 @@
 class UInputAction;
 class USpringArmComponent;
 class UCameraComponent;
+class UPhysicalAnimationComponent;
 struct FInputActionValue;
 
 UCLASS()
@@ -42,7 +43,24 @@ private:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Input", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UInputAction> IA_Run;
 	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Sound", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<USoundBase> JumpSound;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Run", meta=(AllowPrivateAccess="true"))
+	float WalkSpeedMultiplier;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Walk", meta=(AllowPrivateAccess="true"))
+	float DefaultWalkSpeed;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Run", meta=(AllowPrivateAccess="true"))
+	bool bIsSprint;
+	
 	void Move(const FInputActionValue& Value);
 	void Look(const FInputActionValue& Value);
 	void Run();
+	void StopRun();
+	
+public:
+	virtual void Jump() override;
+	virtual void OnJumped_Implementation() override;
 };

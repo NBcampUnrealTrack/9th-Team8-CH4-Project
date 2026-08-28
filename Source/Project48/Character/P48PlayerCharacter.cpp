@@ -6,6 +6,8 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Camera/CameraComponent.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "PhysicsEngine/PhysicalAnimationComponent.h"
+#include "Kismet/GameplayStatics.h"
 
 AP48PlayerCharacter::AP48PlayerCharacter()
 {
@@ -39,11 +41,42 @@ AP48PlayerCharacter::AP48PlayerCharacter()
 	
 	GetMesh()->SetRelativeRotation(FRotator(0.f, -90.f, 0.f));
 	GetMesh()->SetRelativeLocation(FVector(0.f, 0.f, -65.f));
+	
+	//공중에서 이동 제어
+	GetCharacterMovement()->AirControl = 0.2f;
+	GetCharacterMovement()->FallingLateralFriction = 1.0f;
+	GetCharacterMovement()->BrakingDecelerationFalling = 300.f;
+	
+	GetCharacterMovement()->BrakingDecelerationWalking = 5000.f;
+	
+	WalkSpeedMultiplier = 1.5f;
+	bIsSprint = false;
+	DefaultWalkSpeed = 450.f;
+	
+	GetCharacterMovement()->MaxWalkSpeed = DefaultWalkSpeed;
+	GetCharacterMovement()->MaxAcceleration = 5000.f;
+	GetCharacterMovement()->GroundFriction = 10.f;
+	GetCharacterMovement()->MaxStepHeight = 10.f;
+	
+	static ConstructorHelpers::FObjectFinder<USoundBase> JumpSoundFinder(TEXT("/Game/OJH/Resource/Sound/cartoon_jump.cartoon_jump"));
+	if (JumpSoundFinder.Succeeded())
+	{
+		JumpSound = JumpSoundFinder.Object;
+	}
 }
 
 void AP48PlayerCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+	
+	if (USkeletalMeshComponent* MeshComp = GetMesh())
+	{
+		MeshComp->SetPhysicsBlendWeight(0.5f);
+		
+		MeshComp->SetAllBodiesBelowSimulatePhysics(TEXT("Chest"), true, true);
+		
+		MeshComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	}
 }
 
 void AP48PlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -67,12 +100,17 @@ void AP48PlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInput
 			EIC->BindAction(IA_Jump, ETriggerEvent::Triggered, this, &AP48PlayerCharacter::Jump);
 			EIC->BindAction(IA_Jump, ETriggerEvent::Completed, this, &AP48PlayerCharacter::StopJumping);
 		}
+		if (IA_Run)
+			EIC->BindAction(IA_Run, ETriggerEvent::Started, this, &AP48PlayerCharacter::Run);
+			EIC->BindAction(IA_Run, ETriggerEvent::Completed, this, &AP48PlayerCharacter::StopRun);
 	}
 }
 
 void AP48PlayerCharacter::Move(const FInputActionValue& Value)
 {
 	FVector2D MovementVector = Value.Get<FVector2D>();
+	
+	MovementVector = MovementVector.GetClampedToMaxSize(1.0f);
 	
 	if (Controller != nullptr)
 	{
@@ -93,10 +131,6 @@ void AP48PlayerCharacter::Look(const FInputActionValue& Value)
 	
 	if (Controller != nullptr)
 	{
-		if (GEngine)
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, FString::Printf(TEXT("%.f %.f"), LookValue.X, LookValue.Y));
-		}
 		AddControllerYawInput(LookValue.X);
 		AddControllerPitchInput(LookValue.Y);
 	}
@@ -104,5 +138,26 @@ void AP48PlayerCharacter::Look(const FInputActionValue& Value)
 
 void AP48PlayerCharacter::Run()
 {
-	
+	bIsSprint = true;
+	GetCharacterMovement()->MaxWalkSpeed = DefaultWalkSpeed * WalkSpeedMultiplier;
+}
+
+void AP48PlayerCharacter::StopRun()
+{
+	bIsSprint = false;
+	GetCharacterMovement()->MaxWalkSpeed = DefaultWalkSpeed;
+}
+
+void AP48PlayerCharacter::Jump()
+{
+	Super::Jump();
+}
+
+void AP48PlayerCharacter::OnJumped_Implementation()
+{
+	Super::OnJumped_Implementation();
+	if (JumpSound)
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, JumpSound, GetActorLocation());
+	}
 }
