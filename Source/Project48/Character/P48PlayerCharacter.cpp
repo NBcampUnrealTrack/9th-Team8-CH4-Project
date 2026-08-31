@@ -120,6 +120,11 @@ void AP48PlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInput
 		if (IA_Run)
 			EIC->BindAction(IA_Run, ETriggerEvent::Started, this, &AP48PlayerCharacter::Run);
 			EIC->BindAction(IA_Run, ETriggerEvent::Completed, this, &AP48PlayerCharacter::StopRun);
+		
+		if (IA_Attack)
+		{
+			EIC->BindAction(IA_Attack, ETriggerEvent::Started, this, &AP48PlayerCharacter::AttackHandle);
+		}
 	}
 }
 
@@ -176,5 +181,30 @@ void AP48PlayerCharacter::OnJumped_Implementation()
 	if (JumpSound)
 	{
 		UGameplayStatics::PlaySoundAtLocation(this, JumpSound, GetActorLocation());
+	}
+}
+
+void AP48PlayerCharacter::Attack()
+{
+	UAnimMontage* MontageToPlay = bEquipWeapon ? WeaponAttackMontage : PunchAttackMontage;
+	
+	if (MontageToPlay)
+	{
+		PlayAnimMontage(MontageToPlay);
+	}
+	
+	
+}
+
+void AP48PlayerCharacter::AttackHandle()
+{
+	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+	if (AnimInstance)
+	{
+		if (AnimInstance->Montage_IsPlaying(PunchAttackMontage) || AnimInstance->Montage_IsPlaying(WeaponAttackMontage))
+		{
+			return;
+		}
+		Attack();
 	}
 }

@@ -71,12 +71,19 @@ private:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Attack|Collision", meta=(AllowPrivateAccess="true"))
 	float RightHandHitboxRadius;
 	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Attack|Collision", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UAnimMontage> PunchAttackMontage;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Attack|Collision", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UAnimMontage> WeaponAttackMontage;
+	
 	void Move(const FInputActionValue& Value);
 	void Look(const FInputActionValue& Value);
 	void Run();
 	void StopRun();
 	void Attack();
 	
+	void AttackHandle();
 public:
 	virtual void Jump() override;
 	virtual void OnJumped_Implementation() override;
