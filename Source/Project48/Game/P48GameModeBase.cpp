@@ -94,5 +94,61 @@ void AP48GameModeBase::StartMatch()
 	
 	P48GameState->SetMatchPhase(EP48MatchPhase::Playing);
 	
-	UE_LOG(LogTemp,Warning,TEXT("[Server] Match started"));
+	UE_LOG(LogTemp,Warning,TEXT("[Server] Round %d started"),P48GameState->CurrentRound);
+	
+	// 라운드 전환 확인용 임시 코드입니다. 주석처리했음! 나중에 확인할때 열어주쎄요~
+	/*
+	FTimerHandle TestRoundTimerHandle;
+	GetWorldTimerManager().SetTimer(
+	   TestRoundTimerHandle,
+	   this,
+	   &ThisClass::StartRoundEnd,
+	   5.0f,
+	   false);
+	*/
+}
+
+void AP48GameModeBase::StartRoundEnd()
+{
+	AP48GameStateBase* P48GameState = GetGameState<AP48GameStateBase>();
+	if (IsValid(P48GameState) == false)
+	{
+		return;
+	}
+	
+	if (P48GameState->MatchPhase != EP48MatchPhase::Playing)
+	{
+		return;
+	}
+	
+	P48GameState->SetMatchPhase(EP48MatchPhase::RoundEnd);
+	
+	UE_LOG(LogTemp,Warning,TEXT("[Server] Round %d ended"),P48GameState->CurrentRound);
+	
+	GetWorldTimerManager().SetTimer(
+		RoundEndTimerHandle,
+		this,
+		&ThisClass::PrepareNextRound,
+		RoundEndDuration,
+		false);
+}
+
+void AP48GameModeBase::PrepareNextRound()
+{
+	AP48GameStateBase* P48GameState = GetGameState<AP48GameStateBase>();
+	if (IsValid(P48GameState) == false)
+	{
+		return;
+	}
+	
+	if (P48GameState->MatchPhase != EP48MatchPhase::RoundEnd)
+	{
+		return;
+	}
+	
+	P48GameState->SetCurrentRound(P48GameState->CurrentRound + 1);
+	
+	UE_LOG(LogTemp,Warning,TEXT("[Server] Preparing Round %d"),P48GameState->CurrentRound);
+	
+	StartCountdown();
 }

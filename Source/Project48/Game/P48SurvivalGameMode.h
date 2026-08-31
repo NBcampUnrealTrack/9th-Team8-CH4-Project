@@ -13,4 +13,7 @@ UCLASS()
 class PROJECT48_API AP48SurvivalGameMode : public AP48GameModeBase
 {
 	GENERATED_BODY()
+	
+protected:
+	virtual void PrepareNextRound() override;
 };

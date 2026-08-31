@@ -28,9 +28,16 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Match")
 	float CountdownDuration = 3.0f;
 	
+	/* 라운드 종료 상태 유지 시간 */
+	UPROPERTY(EditDefaultsOnly, Category = "Match")
+	float RoundEndDuration = 3.0f;
+	
 	FTimerHandle CountdownTimerHandle;
+	FTimerHandle RoundEndTimerHandle;
 	
 	void CheckStartCondition();
 	void StartCountdown();
 	void StartMatch();
+	void StartRoundEnd();
+	virtual void PrepareNextRound();
 };
