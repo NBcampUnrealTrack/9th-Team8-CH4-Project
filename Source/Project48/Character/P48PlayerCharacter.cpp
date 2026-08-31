@@ -8,6 +8,7 @@
 #include "GameFramework/SpringArmComponent.h"
 #include "PhysicsEngine/PhysicalAnimationComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "Components/SphereComponent.h"
 
 AP48PlayerCharacter::AP48PlayerCharacter()
 {
@@ -63,6 +64,22 @@ AP48PlayerCharacter::AP48PlayerCharacter()
 	{
 		JumpSound = JumpSoundFinder.Object;
 	}
+	
+	//오른손 소켓
+	RightHandHitboxOffset = FVector(0.0f, 0.0f, 0.0f);
+	RightHandHitboxRadius = 12.0f;
+	
+	RightHandHitbox = CreateDefaultSubobject<USphereComponent>(TEXT("RightHandSocket"));
+	RightHandHitbox->SetupAttachment(GetMesh(), TEXT("handslot_r"));
+	
+	RightHandHitbox->SetAbsolute(false, false, true);
+	RightHandHitbox->SetSphereRadius(RightHandHitboxRadius);
+	RightHandHitbox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	RightHandHitbox->SetCollisionObjectType(ECC_WorldDynamic);
+	RightHandHitbox->SetCollisionResponseToAllChannels(ECR_Ignore);
+	RightHandHitbox->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+	
+	
 }
 
 void AP48PlayerCharacter::BeginPlay()
