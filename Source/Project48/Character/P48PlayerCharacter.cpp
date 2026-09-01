@@ -8,6 +8,7 @@
 #include "GameFramework/SpringArmComponent.h"
 #include "PhysicsEngine/PhysicalAnimationComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "Components/SphereComponent.h"
 
 AP48PlayerCharacter::AP48PlayerCharacter()
 {
@@ -63,6 +64,22 @@ AP48PlayerCharacter::AP48PlayerCharacter()
 	{
 		JumpSound = JumpSoundFinder.Object;
 	}
+	
+	//오른손 소켓
+	RightHandHitboxOffset = FVector(0.0f, 0.0f, 0.0f);
+	RightHandHitboxRadius = 12.0f;
+	
+	RightHandHitbox = CreateDefaultSubobject<USphereComponent>(TEXT("RightHandSocket"));
+	RightHandHitbox->SetupAttachment(GetMesh(), TEXT("handslot_r"));
+	
+	RightHandHitbox->SetAbsolute(false, false, true);
+	RightHandHitbox->SetSphereRadius(RightHandHitboxRadius);
+	RightHandHitbox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	RightHandHitbox->SetCollisionObjectType(ECC_WorldDynamic);
+	RightHandHitbox->SetCollisionResponseToAllChannels(ECR_Ignore);
+	RightHandHitbox->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+	
+	
 }
 
 void AP48PlayerCharacter::BeginPlay()
@@ -103,6 +120,11 @@ void AP48PlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInput
 		if (IA_Run)
 			EIC->BindAction(IA_Run, ETriggerEvent::Started, this, &AP48PlayerCharacter::Run);
 			EIC->BindAction(IA_Run, ETriggerEvent::Completed, this, &AP48PlayerCharacter::StopRun);
+		
+		if (IA_Attack)
+		{
+			EIC->BindAction(IA_Attack, ETriggerEvent::Started, this, &AP48PlayerCharacter::AttackHandle);
+		}
 	}
 }
 
@@ -159,5 +181,30 @@ void AP48PlayerCharacter::OnJumped_Implementation()
 	if (JumpSound)
 	{
 		UGameplayStatics::PlaySoundAtLocation(this, JumpSound, GetActorLocation());
+	}
+}
+
+void AP48PlayerCharacter::Attack()
+{
+	UAnimMontage* MontageToPlay = bEquipWeapon ? WeaponAttackMontage : PunchAttackMontage;
+	
+	if (MontageToPlay)
+	{
+		PlayAnimMontage(MontageToPlay);
+	}
+	
+	
+}
+
+void AP48PlayerCharacter::AttackHandle()
+{
+	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+	if (AnimInstance)
+	{
+		if (AnimInstance->Montage_IsPlaying(PunchAttackMontage) || AnimInstance->Montage_IsPlaying(WeaponAttackMontage))
+		{
+			return;
+		}
+		Attack();
 	}
 }

@@ -4,6 +4,7 @@
 #include "P48GameModeBase.h"
 
 #include "P48GameStateBase.h"
+#include "../Character/P48PlayerState.h"
 
 
 void AP48GameModeBase::OnPostLogin(AController* NewPlayer)
@@ -13,28 +14,106 @@ void AP48GameModeBase::OnPostLogin(AController* NewPlayer)
 	UE_LOG(LogTemp, Warning, TEXT("Player Login: %s"), *GetNameSafe(NewPlayer));
 	UE_LOG(LogTemp, Log, TEXT("Player Count: %d"), GetNumPlayers());
 	
+	AP48GameStateBase* P48GameState = GetGameState<AP48GameStateBase>();
+	if (IsValid(P48GameState) == false)
+	{
+		return;
+	}
+
+	AP48PlayerState* P48PlayerState = NewPlayer->GetPlayerState<AP48PlayerState>();
+	if (IsValid(P48PlayerState) == false)
+	{
+		return;
+	}
+
+	// Waiting 이후 접속자는 현재 Match에 참가시키지 않는다. (중도 입장 불가!)
+	if (P48GameState->MatchPhase != EP48MatchPhase::Waiting)
+	{
+		P48PlayerState->SetMatchParticipant(false);
+		P48PlayerState->SetAlive(false);
+
+		UE_LOG(LogTemp,Warning,TEXT("[Server] %s joined as a spectator for the current match"),*P48PlayerState->GetPlayerName());
+
+		return;
+	}
+	// Ready 연동 전, 서버 흐름 확인용 임시 코드입니다! 추후 삭제 예정.
+	// P48PlayerState->SetReady(true);
+	
 	CheckStartCondition();
 }
 
 void AP48GameModeBase::Logout(AController* Exit)
 {
-	const FString ExistingPlayerName = GetNameSafe(Exit);
-	const int32 RemainingPlayerCount = FMath::Max(0, GetNumPlayers() - 1);
-	Super::Logout(Exit);
-	
-	UE_LOG(LogTemp, Warning, TEXT("Player Logout: %s"), *ExistingPlayerName);
-	UE_LOG(LogTemp, Warning, TEXT("Remaining Player Count: %d"), RemainingPlayerCount);
-	
-	// 카운트다운 중 플레이어 수가 최소 시작 플레이어 수 보다 적어진다면 타이머 리셋 및 MatchPhase Waiting으로 변경
-	AP48GameStateBase* P48GameState = GetGameState<AP48GameStateBase>();
-	if (IsValid(P48GameState) == true
-		&& P48GameState->MatchPhase == EP48MatchPhase::Countdown
-		&& RemainingPlayerCount < MinPlayersToStart)
-	{
-		GetWorldTimerManager().ClearTimer(CountdownTimerHandle);
-		P48GameState->SetMatchPhase(EP48MatchPhase::Waiting);
-		UE_LOG(LogTemp, Warning, TEXT("[Server] Countdown canceled: not enough players!"));
-	}
+    const FString ExitingPlayerName = GetNameSafe(Exit);
+    const int32 RemainingPlayerCount = FMath::Max(0, GetNumPlayers() - 1);
+
+    AP48GameStateBase* P48GameState = GetGameState<AP48GameStateBase>();
+
+    AP48PlayerState* ExitingPlayerState = IsValid(Exit) ? Exit->GetPlayerState<AP48PlayerState>() : nullptr;
+
+    const bool bWasMatchParticipant = IsValid(ExitingPlayerState) && ExitingPlayerState->IsMatchParticipant();
+
+    int32 RemainingParticipantCount = 0;
+
+    if (IsValid(P48GameState) == true)
+    {
+        for (APlayerState* PlayerState : P48GameState->PlayerArray)
+        {
+            AP48PlayerState* P48PlayerState = Cast<AP48PlayerState>(PlayerState);
+
+            if (IsValid(P48PlayerState) == false)
+            {
+                continue;
+            }
+
+            // 지금 퇴장하는 플레이어는 남은 참가자 수에서 제외한다.
+            if (P48PlayerState == ExitingPlayerState)
+            {
+                continue;
+            }
+
+            if (P48PlayerState->IsMatchParticipant() == true)
+            {
+                RemainingParticipantCount++;
+            }
+        }
+    }
+
+    Super::Logout(Exit);
+
+    UE_LOG(LogTemp,Warning,TEXT("Player Logout: %s"),*ExitingPlayerName);
+
+    UE_LOG(LogTemp,Warning,TEXT("Remaining Player Count: %d"),RemainingPlayerCount);
+
+    UE_LOG(LogTemp,Warning,TEXT("Remaining Match Participants: %d"),RemainingParticipantCount);
+
+    if (IsValid(P48GameState) == true
+        && P48GameState->MatchPhase == EP48MatchPhase::Countdown
+        && bWasMatchParticipant == true
+        && RemainingParticipantCount < MinPlayersToStart)
+    {
+        GetWorldTimerManager().ClearTimer(CountdownTimerHandle);
+        P48GameState->SetMatchPhase(EP48MatchPhase::Waiting);
+
+		for (APlayerState* PlayerState : P48GameState->PlayerArray)
+		{
+			AP48PlayerState* P48PlayerState = Cast<AP48PlayerState>(PlayerState);
+
+			if (IsValid(P48PlayerState) == true)
+			{
+				P48PlayerState->SetMatchParticipant(false);
+			}
+		}
+
+        UE_LOG(LogTemp,Warning,TEXT("[Server] Countdown canceled: not enough match participants"));
+    }
+}
+
+void AP48GameModeBase::NotifyPlayerReadyStateChanged()
+{
+	UE_LOG(LogTemp,Warning,TEXT("[Server] Player Ready state changed"));
+
+	CheckStartCondition();
 }
 
 void AP48GameModeBase::CheckStartCondition()
@@ -55,8 +134,71 @@ void AP48GameModeBase::CheckStartCondition()
 		return;
 	}
 	
-	UE_LOG(LogTemp,Warning,TEXT("[Server] Start condition met: %d/%d"),GetNumPlayers(),MinPlayersToStart);
+	if (AreAllPlayersReady() == false)
+	{
+		UE_LOG(LogTemp,Warning,TEXT("[Server] Waiting for all players to be ready"));
+
+		return;
+	}
+	
+	ConfirmMatchParticipants();
+
+	UE_LOG(LogTemp,Warning,TEXT("[Server] Start condition met: %d/%d, All players ready"),GetNumPlayers(),MinPlayersToStart);
 	StartCountdown();
+}
+
+bool AP48GameModeBase::AreAllPlayersReady() const
+{
+	AP48GameStateBase* P48GameState = GetGameState<AP48GameStateBase>();
+	if (IsValid(P48GameState) == false)
+	{
+		return false;
+	}
+	
+	int32 ValidPlayerCount = 0;
+	
+	for (APlayerState* PlayerState : P48GameState->PlayerArray)
+	{
+		const AP48PlayerState* P48PlayerState = Cast<AP48PlayerState>(PlayerState);
+		if (IsValid(P48PlayerState) == false)
+		{
+			return false;
+		}
+		
+		ValidPlayerCount++;
+		
+		if (P48PlayerState->IsReady() == false)
+		{
+			return false;
+		}
+	}
+	
+	return ValidPlayerCount >= MinPlayersToStart;
+}
+
+void AP48GameModeBase::ConfirmMatchParticipants()
+{
+	AP48GameStateBase* P48GameState = GetGameState<AP48GameStateBase>();
+	if (IsValid(P48GameState) == false)
+	{
+		return;
+	}
+	
+	int32 ParticipantCount = 0;
+	
+	for (APlayerState* PlayerState : P48GameState->PlayerArray)
+	{
+		AP48PlayerState* P48PlayerState = Cast<AP48PlayerState>(PlayerState);
+		if (IsValid(P48PlayerState) == false)
+		{
+			continue;
+		}
+		
+		P48PlayerState->SetMatchParticipant(true);
+		ParticipantCount++;
+	}
+
+	UE_LOG(LogTemp,Warning,TEXT("[Server] Match participants confirmed: %d"),ParticipantCount);
 }
 
 void AP48GameModeBase::StartCountdown()
