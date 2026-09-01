@@ -8,6 +8,7 @@ class UInputAction;
 class USpringArmComponent;
 class UCameraComponent;
 class UPhysicalAnimationComponent;
+class USphereComponent;
 struct FInputActionValue;
 
 UCLASS()
@@ -43,6 +44,9 @@ private:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Input", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UInputAction> IA_Run;
 	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Input", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UInputAction> IA_Attack;
+	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Sound", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<USoundBase> JumpSound;
 	
@@ -55,11 +59,31 @@ private:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Run", meta=(AllowPrivateAccess="true"))
 	bool bIsSprint;
 	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Attack", meta=(AllowPrivateAccess="true"))
+	bool bEquipWeapon;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Attack|Collision", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<USphereComponent> RightHandHitbox;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Attack|Collision", meta=(AllowPrivateAccess="true"))
+	FVector RightHandHitboxOffset;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Attack|Collision", meta=(AllowPrivateAccess="true"))
+	float RightHandHitboxRadius;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Attack|Collision", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UAnimMontage> PunchAttackMontage;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Attack|Collision", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UAnimMontage> WeaponAttackMontage;
+	
 	void Move(const FInputActionValue& Value);
 	void Look(const FInputActionValue& Value);
 	void Run();
 	void StopRun();
+	void Attack();
 	
+	void AttackHandle();
 public:
 	virtual void Jump() override;
 	virtual void OnJumped_Implementation() override;
