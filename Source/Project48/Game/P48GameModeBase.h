@@ -18,6 +18,8 @@ public:
 	virtual void OnPostLogin(AController* NewPlayer) override;
 	virtual void Logout(AController* Exit) override;
 	
+	void NotifyPlayerReadyStateChanged();
+	
 protected:
 	
 	/* 게임 시작에 필요한 최소 인원 */
@@ -36,6 +38,9 @@ protected:
 	FTimerHandle RoundEndTimerHandle;
 	
 	void CheckStartCondition();
+	bool AreAllPlayersReady() const;
+	void ConfirmMatchParticipants();
+	
 	void StartCountdown();
 	void StartMatch();
 	void StartRoundEnd();
