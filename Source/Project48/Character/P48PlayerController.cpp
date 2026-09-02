@@ -5,10 +5,16 @@
 #include "EnhancedInputSubsystems.h"
 #include "InputMappingContext.h"
 #include "Blueprint/UserWidget.h"
+#include "Project48/Game/P48GameModeBase.h"
 
 void AP48PlayerController::BeginPlay()
 {
 	Super::BeginPlay();
+	
+	if (IsLocalController() == false)
+	{
+		return;
+	}
 	
 	if (ULocalPlayer* LocalPlayer = GetLocalPlayer())
 	{
@@ -19,6 +25,11 @@ void AP48PlayerController::BeginPlay()
 				Subsystem->AddMappingContext(DefaultMappingContext, 0);
 			}
 		}
+	}
+	
+	if (IsValid(WidgetClass) == false)
+	{
+		return;
 	}
 	
 	WidgetInstance = CreateWidget<UUserWidget>(this, WidgetClass);
@@ -67,4 +78,9 @@ void AP48PlayerController::Server_SetReady_Implementation(bool bNewReady)
 	}
 	
 	PS->SetReady(bNewReady);
+	
+	if (AP48GameModeBase* GameMode = GetWorld()->GetAuthGameMode<AP48GameModeBase>())
+	{
+		GameMode->NotifyPlayerReadyStateChanged();
+	}
 }
