@@ -32,4 +32,8 @@ protected:
 	TObjectPtr<UP48ChatWidget> ChatWidgetInstance; // 실제로 생성된 채팅 위젯 객체를 저장하는 변수
 	
 	bool bIsChatInputOpen = false;
+	
+protected:
+	UFUNCTION(Server, Reliable)
+	void ServerSendChatMessage(const FString& InChatMessage);
 };

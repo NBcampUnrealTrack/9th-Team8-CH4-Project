@@ -1,7 +1,7 @@
 #include "HSPlayerController.h"
+#include "HSGameStateBase.h"
 #include "P48ChatWidget.h"
 #include "P48ChatInput.h"
-#include "Components/EditableTextBox.h"
 
 //FInputModeUIOnly InputModeUIOnly; // Input Mode(입력 모드)를 설정하기 위한 구조체 (게임 플레이보다는 UI가 입력을 받도록 설정하는 모드)
 //SetInputMode(InputModeUIOnly); // PlayerController의 입력 모드를 UI 전용으로 설정
@@ -78,9 +78,15 @@ void AHSPlayerController::CloseChatInput()
 
 void AHSPlayerController::SetChatMessageString(const FString& InChatMessageString)
 {
+	/*
 	if (InChatMessageString.IsEmpty() == false)
 	{
 		PrintChatMessageString(InChatMessageString);
+	}
+	 */
+	if (InChatMessageString.IsEmpty() == false)
+	{
+		ServerSendChatMessage(InChatMessageString);
 	}
 
 	CloseChatInput();
@@ -91,4 +97,15 @@ void AHSPlayerController::PrintChatMessageString(const FString& InChatMessageStr
 	if (IsValid(ChatWidgetInstance) == false) return;
 	
 	ChatWidgetInstance->AddChatMessage(InChatMessageString);
+}
+
+void AHSPlayerController::ServerSendChatMessage_Implementation(
+	const FString& InChatMessage)
+{
+	AHSGameStateBase* GameState = GetWorld()->GetGameState<AHSGameStateBase>();
+
+	if (IsValid(GameState) == true)
+	{
+		GameState->MulticastReceiveChatMessage(InChatMessage);
+	}
 }

@@ -14,4 +14,7 @@ class PROJECT48_API AHSGameStateBase : public AP48GameStateBase
 {
 	GENERATED_BODY()
 	
+public:
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastReceiveChatMessage(const FString& InChatMessage);
 };
