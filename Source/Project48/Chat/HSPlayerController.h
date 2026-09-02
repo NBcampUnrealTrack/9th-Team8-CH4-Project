@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Project48/Character/P48PlayerController.h"
+#include "ChatMessageData.h"
 #include "HSPlayerController.generated.h"
 
 class UP48ChatInput;
@@ -17,7 +18,7 @@ public:
 	virtual void SetupInputComponent() override;
 	
 	void SetChatMessageString(const FString& InChatMessageString);
-	void PrintChatMessageString(const FString& InChatMessageString);
+	void PrintChatMessageString(const FChatMessage& InChatMessage);
 
 protected:
 	void OpenChatInput();

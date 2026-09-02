@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "ChatMessageData.h"
 #include "P48ChatWidget.generated.h"
 
 class UVerticalBox;
@@ -15,10 +16,11 @@ class PROJECT48_API UP48ChatWidget : public UUserWidget
 	GENERATED_BODY()
 	
 public:
-	void NativeConstruct();
+	virtual void NativeConstruct() override;
+	
 	void OpenChatInput();
 	void CloseChatInput();
-	void AddChatMessage(const FString& InChatMessage);
+	void AddChatMessage(const FChatMessage& InChatMessage);
 
 protected:
 	UPROPERTY(meta = (BindWidget))

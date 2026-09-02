@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Project48/Game/P48GameStateBase.h"
+#include "ChatMessageData.h"
 #include "HSGameStateBase.generated.h"
 
 /**
@@ -16,5 +17,5 @@ class PROJECT48_API AHSGameStateBase : public AP48GameStateBase
 	
 public:
 	UFUNCTION(NetMulticast, Reliable)
-	void MulticastReceiveChatMessage(const FString& InChatMessage);
+	void MulticastReceiveChatMessage(const FChatMessage& InChatMessage);
 };

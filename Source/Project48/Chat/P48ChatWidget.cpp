@@ -5,15 +5,11 @@
 #include "Components/VerticalBox.h"
 #include "Components/ScrollBox.h"
 
-void UP48ChatWidget::AddChatMessage(const FString& InChatMessage)
+void UP48ChatWidget::AddChatMessage(const FChatMessage& InChatMessage)
 {
 	if (IsValid(VerticalBox_ChatMessages) == false) return;
 
-	UP48ChatMessage* NewChatMessage =
-		CreateWidget<UP48ChatMessage>(
-			GetWorld(),
-			ChatMessageClass
-		);
+	UP48ChatMessage* NewChatMessage = CreateWidget<UP48ChatMessage>(GetWorld(), ChatMessageClass);
 
 	if (IsValid(NewChatMessage) == false) return;
 	

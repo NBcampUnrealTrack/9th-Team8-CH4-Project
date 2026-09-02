@@ -29,6 +29,7 @@ void UP48ChatInput::OnChatInputTextCommitted(const FText& Text, ETextCommit::Typ
 	APlayerController* OwningPlayerController = GetOwningPlayer();
 	if (IsValid(OwningPlayerController) == false) return;
 	
+	/* 추후에 PC변경 */
 	AHSPlayerController* OwningHSPlayerController = Cast<AHSPlayerController>(OwningPlayerController);
 	if (IsValid(OwningHSPlayerController) == false) return;
 	
