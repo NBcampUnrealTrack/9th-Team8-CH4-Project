@@ -14,13 +14,22 @@ class PROJECT48_API AHSPlayerController : public AP48PlayerController
 	
 public:
 	virtual void BeginPlay() override;
+	virtual void SetupInputComponent() override;
 	
 	void SetChatMessageString(const FString& InChatMessageString);
 	void PrintChatMessageString(const FString& InChatMessageString);
 
 protected:
+	void OpenChatInput();
+	void CloseChatInput();
+
+	void ToggleChatInput();
+	
+protected:
 	UPROPERTY(EditDefaultsOnly)
 	TSubclassOf<UP48ChatWidget> ChatWidgetClass; // UP48ChatWidget 기반으로 만들어진 WidgetBlueprint의 클래스
 	UPROPERTY()
 	TObjectPtr<UP48ChatWidget> ChatWidgetInstance; // 실제로 생성된 채팅 위젯 객체를 저장하는 변수
+	
+	bool bIsChatInputOpen = false;
 };

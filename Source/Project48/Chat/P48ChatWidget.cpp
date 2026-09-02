@@ -1,5 +1,7 @@
 #include "P48ChatWidget.h"
+#include "P48ChatInput.h"
 #include "P48ChatMessage.h"
+#include "Components/EditableTextBox.h"
 #include "Components/VerticalBox.h"
 #include "Components/ScrollBox.h"
 
@@ -28,4 +30,29 @@ void UP48ChatWidget::AddChatMessage(const FString& InChatMessage)
 	if (IsValid(ScrollBox_Chat) == false) return;
 	
 	ScrollBox_Chat->ScrollToEnd(); // 스크롤 맨 아래로
+}
+
+void UP48ChatWidget::NativeConstruct()
+{
+	Super::NativeConstruct();
+
+	ChatInput->SetVisibility(ESlateVisibility::Collapsed);
+}
+
+void UP48ChatWidget::OpenChatInput()
+{
+	if (IsValid(ChatInput) == false) return;
+	
+	ChatInput->SetVisibility(ESlateVisibility::Visible);
+	
+	if (IsValid(ChatInput->EditableTextBox_ChatInput) == false) return;
+	
+	ChatInput->EditableTextBox_ChatInput->SetKeyboardFocus();
+}
+
+void UP48ChatWidget::CloseChatInput()
+{
+	if (IsValid(ChatInput) == false)  return;
+
+	ChatInput->SetVisibility(ESlateVisibility::Collapsed);
 }

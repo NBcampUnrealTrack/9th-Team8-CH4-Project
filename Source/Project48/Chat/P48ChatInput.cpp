@@ -24,26 +24,18 @@ void UP48ChatInput::NativeDestruct()
 
 void UP48ChatInput::OnChatInputTextCommitted(const FText& Text, ETextCommit::Type CommitMethod)
 {
-	if (CommitMethod == ETextCommit::OnEnter)
-	{
-		if (Text.IsEmpty()) // 빈 메시지 막기
-		{
-			return;
-		}
-		
-		APlayerController* OwningPlayerController = GetOwningPlayer();
-		if (IsValid(OwningPlayerController) == true)
-		{
-			AHSPlayerController* OwningHSPlayerController = Cast<AHSPlayerController>(OwningPlayerController);
-			if (IsValid(OwningHSPlayerController) == true)
-			{
-				OwningHSPlayerController->SetChatMessageString(Text.ToString());
+	if (CommitMethod != ETextCommit::OnEnter) return;
+	
+	APlayerController* OwningPlayerController = GetOwningPlayer();
+	if (IsValid(OwningPlayerController) == false) return;
+	
+	AHSPlayerController* OwningHSPlayerController = Cast<AHSPlayerController>(OwningPlayerController);
+	if (IsValid(OwningHSPlayerController) == false) return;
+	
+	OwningHSPlayerController->SetChatMessageString(Text.ToString());
 
-				if (IsValid(EditableTextBox_ChatInput) == true)
-				{
-					EditableTextBox_ChatInput->SetText(FText());	
-				}
-			}
-		}
+	if (IsValid(EditableTextBox_ChatInput) == true)
+	{
+		EditableTextBox_ChatInput->SetText(FText());	
 	}
 }
