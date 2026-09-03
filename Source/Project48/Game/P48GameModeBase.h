@@ -42,7 +42,7 @@ protected:
 	void ConfirmMatchParticipants();
 	
 	void StartCountdown();
-	void StartMatch();
+	virtual void StartMatch();
 	void StartRoundEnd();
 	virtual void PrepareNextRound();
 };
