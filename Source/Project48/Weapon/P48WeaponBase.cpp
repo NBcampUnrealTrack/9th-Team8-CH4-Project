@@ -3,6 +3,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/CollisionProfile.h"
+#include "Components/BoxComponent.h"
 
 AP48WeaponBase::AP48WeaponBase()
 {
@@ -18,6 +19,22 @@ AP48WeaponBase::AP48WeaponBase()
 	
 	SetRootComponent(WeaponMeshComponent);
 		
+	AttackCollisionComponent = CreateDefaultSubobject<UBoxComponent>(
+		TEXT("AttackCollisionComponent"));
+	
+	AttackCollisionComponent->SetupAttachment(WeaponMeshComponent);
+	
+	AttackCollisionComponent->SetBoxExtent(FVector(15.0f, 15.0f, 50.0f));
+	
+	AttackCollisionComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	AttackCollisionComponent->SetCollisionResponseToAllChannels(ECR_Ignore);
+	AttackCollisionComponent->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+	AttackCollisionComponent->SetCollisionResponseToChannel(ECC_PhysicsBody, ECR_Overlap);
+	AttackCollisionComponent->SetGenerateOverlapEvents(true);
+	AttackCollisionComponent->OnComponentBeginOverlap.AddDynamic(
+		this,
+		&AP48WeaponBase::OnAttackCollisionBeginOverlap);
+	
 	WeaponMeshComponent->SetCollisionProfileName(
 		UCollisionProfile::PhysicsActor_ProfileName
 		);
@@ -119,4 +136,110 @@ FWeaponDataRow AP48WeaponBase::GetWeaponData() const
 FName AP48WeaponBase::GetWeaponRowName() const
 {
 	return WeaponDataHandle.RowName;
+}
+
+void AP48WeaponBase::StartAttackDetection()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+	
+	if (bIsAttackDetectionActive)
+	{
+		return;
+	}
+	
+	HitActorsThisAttack.Reset();
+	bIsAttackDetectionActive = true;
+	
+	AttackCollisionComponent->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	
+	UE_LOG(LogTemp, Log, TEXT("%s 무기 공격 판정 시작"), *GetName());
+}
+
+void AP48WeaponBase::StopAttackDetection()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+	
+	if (!bIsAttackDetectionActive)
+	{
+		return;
+	}
+	
+	bIsAttackDetectionActive = false;
+	
+	AttackCollisionComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	
+	UE_LOG(LogTemp, Log, TEXT("%s 무기 공격 판정 종료"), *GetName());
+}
+
+void AP48WeaponBase::OnAttackCollisionBeginOverlap(
+	UPrimitiveComponent* OverlappedComponent,
+	AActor* OtherActor,
+	UPrimitiveComponent* OtherComponent,
+	int32 OtherBodyIndex,
+	bool bFromSweep,
+	const FHitResult& SweepResult)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+	
+	if (!bIsAttackDetectionActive)
+	{
+		return;
+	}
+	
+	if (OtherActor == this || OtherActor == GetOwner())
+	{
+		return;
+	}
+	
+	const TWeakObjectPtr<AActor> HitActor(OtherActor);
+	
+	if (HitActorsThisAttack.Contains(HitActor))
+	{
+		return;
+	}
+	
+	HitActorsThisAttack.Add(HitActor);
+	
+	HandleWeaponHit(OtherActor);
+	
+	UE_LOG(LogTemp, Log, TEXT("%s: 공격 대상 감지 [%s]"), *GetName(), *OtherActor->GetName());
+}
+
+void AP48WeaponBase::HandleWeaponHit(AActor* HitActor)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+	
+	if (!IsValid(HitActor))
+	{
+		return;
+	}
+	
+	if (!bHasValidWeaponData)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("%s: 유효한 무기가 없어 피격을 처리할 수 없습니다."), *GetName());
+		
+		return;
+	}
+	
+	UE_LOG(LogTemp,
+		Log,
+		TEXT("%s: 공격 대상=%s, Row=%s, GroggyDamage=%.1f,"
+		"KnockbackPower=%1f"),
+		*GetName(),
+		*HitActor->GetName(),
+		*WeaponDataHandle.RowName.ToString(),
+		CachedWeaponData.GroggyDamage,
+		CachedWeaponData.KnockbackPower);
 }

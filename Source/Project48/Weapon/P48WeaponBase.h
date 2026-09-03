@@ -6,6 +6,8 @@
 #include "P48WeaponBase.generated.h"
 
 class UStaticMeshComponent;
+class UBoxComponent;
+class UPrimitiveComponent;
 
 UCLASS()
 class PROJECT48_API AP48WeaponBase : public AActor
@@ -25,12 +27,21 @@ public:
 	
 	UFUNCTION(BlueprintPure, Category = "Weapon|Data")
 	FName GetWeaponRowName() const;
+	
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Attack")
+	void StartAttackDetection();
+	
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Attack")
+	void StopAttackDetection();
 
 protected:
 	virtual void BeginPlay() override;
 	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon|Component")
 	TObjectPtr<UStaticMeshComponent> WeaponMeshComponent;
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon|Component")
+	TObjectPtr<UBoxComponent> AttackCollisionComponent;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon|Data")
 	FDataTableRowHandle WeaponDataHandle;
@@ -43,4 +54,20 @@ private:
 	
 	UPROPERTY(Transient)
 	bool bHasValidWeaponData = false;
+	
+	UPROPERTY(Transient)
+	bool bIsAttackDetectionActive = false;
+	
+	UFUNCTION()
+	void OnAttackCollisionBeginOverlap(
+		UPrimitiveComponent* OverlappedComponent,
+		AActor* OtherActor,
+		UPrimitiveComponent* OtherComponent,
+		int32 OtherBodyIndex,
+		bool bFromSweep,
+		const FHitResult& SweepResult);
+	
+	TSet<TWeakObjectPtr<AActor>> HitActorsThisAttack;
+	
+	void HandleWeaponHit(AActor* HitActor);
 };
