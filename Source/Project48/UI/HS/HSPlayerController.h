@@ -2,9 +2,9 @@
 
 #include "CoreMinimal.h"
 #include "Project48/Character/P48PlayerController.h"
-#include "ChatMessageData.h"
 #include "HSPlayerController.generated.h"
 
+struct FChatMessage;
 class UP48ChatInput;
 class UP48ChatWidget;
 

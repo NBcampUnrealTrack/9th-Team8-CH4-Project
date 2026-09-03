@@ -2,9 +2,9 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
-#include "ChatMessageData.h"
 #include "P48ChatWidget.generated.h"
 
+struct FChatMessage;
 class UVerticalBox;
 class UScrollBox;
 class UP48ChatMessage;

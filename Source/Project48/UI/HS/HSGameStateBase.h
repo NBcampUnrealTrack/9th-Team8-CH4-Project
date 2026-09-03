@@ -4,12 +4,10 @@
 
 #include "CoreMinimal.h"
 #include "Project48/Game/P48GameStateBase.h"
-#include "ChatMessageData.h"
 #include "HSGameStateBase.generated.h"
 
-/**
- * 
- */
+struct FChatMessage;
+
 UCLASS()
 class PROJECT48_API AHSGameStateBase : public AP48GameStateBase
 {

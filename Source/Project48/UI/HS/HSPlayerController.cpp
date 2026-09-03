@@ -1,8 +1,8 @@
 #include "HSPlayerController.h"
 #include "HSGameStateBase.h"
-#include "P48ChatWidget.h"
-#include "P48ChatInput.h"
+#include "Project48/UI/Chat/P48ChatWidget.h"
 #include "GameFramework/PlayerState.h"
+#include "Project48/UI/Chat/ChatMessageData.h"
 
 //FInputModeUIOnly InputModeUIOnly; // Input Mode(입력 모드)를 설정하기 위한 구조체 (게임 플레이보다는 UI가 입력을 받도록 설정하는 모드)
 //SetInputMode(InputModeUIOnly); // PlayerController의 입력 모드를 UI 전용으로 설정
