@@ -2,6 +2,9 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "AbilitySystemInterface.h"
+#include "Project48/DataTable/CharacterStatDataTypes.h"
+#include "ActiveGameplayEffectHandle.h"
 #include "P48PlayerCharacter.generated.h"
 
 class UInputAction;
@@ -9,10 +12,13 @@ class USpringArmComponent;
 class UCameraComponent;
 class UPhysicalAnimationComponent;
 class USphereComponent;
+class UAbilitySystemComponent;
+class UGameplayEffect;
+class UP48GroggyAttributeSet;
 struct FInputActionValue;
 
 UCLASS()
-class PROJECT48_API AP48PlayerCharacter : public ACharacter
+class PROJECT48_API AP48PlayerCharacter : public ACharacter, public IAbilitySystemInterface
 {
 	GENERATED_BODY()
 
@@ -21,9 +27,33 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+
+	//GAS
+	virtual void PossessedBy(AController* NewController) override;
+	virtual void OnRep_PlayerState() override;
+	
+	//DT
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Stat")
+	TObjectPtr<UDataTable> CharacterStatTable;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Stat")
+	FName CharacterStatRowName = TEXT("Player_Default");
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Stat")
+	FCharacterStatRow CurrentStatRow;
+	
+	UPROPERTY(EditDefaultsOnly, Category="GAS|Run")
+	TSubclassOf<UGameplayEffect> RunEffectClass;
+	
+	FActiveGameplayEffectHandle RunEffectHandle;
+	
+	void InitializeStatsFromDataTable();
 	
 public:	
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+	
+	//GAS
+	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 	
 private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components|Camera", meta=(AllowPrivateAccess="true"))
@@ -76,6 +106,17 @@ private:
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Attack|Collision", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UAnimMontage> WeaponAttackMontage;
+	
+	//GAS
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GAS", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UAbilitySystemComponent> AbilitySystemComponent;
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GAS", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UP48GroggyAttributeSet> GroggyAttributeSet;
+	
+	//ServerRPC
+	UFUNCTION(Server, Reliable)
+	void Server_SetMaxWalkSpeed(float NewSpeed);
 	
 	void Move(const FInputActionValue& Value);
 	void Look(const FInputActionValue& Value);

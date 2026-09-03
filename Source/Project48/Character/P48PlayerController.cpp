@@ -32,14 +32,14 @@ void AP48PlayerController::BeginPlay()
 		return;
 	}
 	
-	WidgetInstance = CreateWidget<UUserWidget>(this, WidgetClass);
+	/*WidgetInstance = CreateWidget<UUserWidget>(this, WidgetClass);
 	if (WidgetInstance)
 	{
 		WidgetInstance->AddToViewport();
 		
 		bShowMouseCursor = true;
 		SetInputMode(FInputModeUIOnly());
-	}
+	}*/
 }
 
 void AP48PlayerController::RequestReady()

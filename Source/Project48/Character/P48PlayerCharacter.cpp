@@ -1,5 +1,9 @@
 ﻿#include "P48PlayerCharacter.h"
 
+#include "Project48/GAS/P48GroggyAttributeSet.h"
+#include "Project48/DataTable/CharacterStatDataTypes.h"
+#include "Project48/Effect/P48GE_Run.h"
+
 #include "Components/CapsuleComponent.h"
 #include "EnhancedInputComponent.h"
 #include "InputActionValue.h"
@@ -43,6 +47,14 @@ AP48PlayerCharacter::AP48PlayerCharacter()
 	GetMesh()->SetRelativeRotation(FRotator(0.f, -90.f, 0.f));
 	GetMesh()->SetRelativeLocation(FVector(0.f, 0.f, -65.f));
 	
+	//GAS
+	AbilitySystemComponent = CreateDefaultSubobject<UAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
+	AbilitySystemComponent->SetIsReplicated(true);
+	
+	AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Mixed);
+	
+	GroggyAttributeSet = CreateDefaultSubobject<UP48GroggyAttributeSet>(TEXT("GroggyAttributeSet"));
+	
 	//공중에서 이동 제어
 	GetCharacterMovement()->AirControl = 0.2f;
 	GetCharacterMovement()->FallingLateralFriction = 1.0f;
@@ -52,7 +64,7 @@ AP48PlayerCharacter::AP48PlayerCharacter()
 	
 	WalkSpeedMultiplier = 1.5f;
 	bIsSprint = false;
-	DefaultWalkSpeed = 450.f;
+	DefaultWalkSpeed = 5000.f; //DT에서 제대로 불러오는지 확인하기 위한 임시 조정
 	
 	GetCharacterMovement()->MaxWalkSpeed = DefaultWalkSpeed;
 	GetCharacterMovement()->MaxAcceleration = 5000.f;
@@ -79,7 +91,7 @@ AP48PlayerCharacter::AP48PlayerCharacter()
 	RightHandHitbox->SetCollisionResponseToAllChannels(ECR_Ignore);
 	RightHandHitbox->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
 	
-	
+	RunEffectClass = UP48GE_Run::StaticClass();
 }
 
 void AP48PlayerCharacter::BeginPlay()
@@ -94,7 +106,39 @@ void AP48PlayerCharacter::BeginPlay()
 		
 		MeshComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 	}
+	
+	if (AbilitySystemComponent)
+	{
+		AbilitySystemComponent->InitAbilityActorInfo(this, this);
+	}
+	
+	InitializeStatsFromDataTable();
 }
+
+void AP48PlayerCharacter::PossessedBy(AController* NewController)
+{
+	Super::PossessedBy(NewController);
+	
+	if (AbilitySystemComponent)
+	{
+		AbilitySystemComponent->InitAbilityActorInfo(this, this);
+	}
+	
+	InitializeStatsFromDataTable();
+}
+
+void AP48PlayerCharacter::OnRep_PlayerState()
+{
+	Super::OnRep_PlayerState();
+	
+	if (AbilitySystemComponent)
+	{
+		AbilitySystemComponent->InitAbilityActorInfo(this, this);
+	}
+	
+	InitializeStatsFromDataTable();
+}
+
 
 void AP48PlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
@@ -117,9 +161,12 @@ void AP48PlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInput
 			EIC->BindAction(IA_Jump, ETriggerEvent::Triggered, this, &AP48PlayerCharacter::Jump);
 			EIC->BindAction(IA_Jump, ETriggerEvent::Completed, this, &AP48PlayerCharacter::StopJumping);
 		}
+		
 		if (IA_Run)
+		{
 			EIC->BindAction(IA_Run, ETriggerEvent::Started, this, &AP48PlayerCharacter::Run);
 			EIC->BindAction(IA_Run, ETriggerEvent::Completed, this, &AP48PlayerCharacter::StopRun);
+		}
 		
 		if (IA_Attack)
 		{
@@ -160,14 +207,69 @@ void AP48PlayerCharacter::Look(const FInputActionValue& Value)
 
 void AP48PlayerCharacter::Run()
 {
-	bIsSprint = true;
-	GetCharacterMovement()->MaxWalkSpeed = DefaultWalkSpeed * WalkSpeedMultiplier;
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("Run"));
+	}
+	
+	if (!AbilitySystemComponent || !RunEffectClass)
+	{
+		return;	
+	}
+	
+	if (RunEffectHandle.IsValid())
+	{
+		return;
+	}
+	
+	FGameplayEffectContextHandle ContextHandle = AbilitySystemComponent->MakeEffectContext();
+	ContextHandle.AddSourceObject(this);
+	
+	RunEffectHandle = AbilitySystemComponent->BP_ApplyGameplayEffectToSelf(
+		RunEffectClass,
+		1.0f,
+		ContextHandle
+		);
+	
+	if (GetCharacterMovement())
+	{
+		GetCharacterMovement()->MaxWalkSpeed = CurrentStatRow.WalkSpeed * CurrentStatRow.RunSpeedMultiplier;
+	}
+	
+	if (!HasAuthority())
+	{
+		Server_SetMaxWalkSpeed(CurrentStatRow.WalkSpeed * CurrentStatRow.RunSpeedMultiplier);
+	}
+	
 }
 
 void AP48PlayerCharacter::StopRun()
 {
-	bIsSprint = false;
-	GetCharacterMovement()->MaxWalkSpeed = DefaultWalkSpeed;
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("Stop Run"));
+	}
+	
+	if (!AbilitySystemComponent || !RunEffectClass)
+	{
+		return;
+	}
+	
+	if (RunEffectHandle.IsValid())
+	{
+		AbilitySystemComponent->RemoveActiveGameplayEffect(RunEffectHandle);
+		RunEffectHandle.Invalidate();
+	}
+	
+	if (GetCharacterMovement())
+	{
+		GetCharacterMovement()->MaxWalkSpeed = CurrentStatRow.WalkSpeed;
+	}
+	
+	if (!HasAuthority())
+	{
+		Server_SetMaxWalkSpeed(CurrentStatRow.WalkSpeed);
+	}
 }
 
 void AP48PlayerCharacter::Jump()
@@ -206,5 +308,47 @@ void AP48PlayerCharacter::AttackHandle()
 			return;
 		}
 		Attack();
+	}
+}
+
+UAbilitySystemComponent* AP48PlayerCharacter::GetAbilitySystemComponent() const
+{
+	return AbilitySystemComponent;
+}
+
+void AP48PlayerCharacter::InitializeStatsFromDataTable()
+{
+	if (!CharacterStatTable)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[PlayerCharacter] CharacterStatTable is none."));
+		return;
+	}
+	
+	static const FString ContextString(TEXT("Character Stat Context"));
+	FCharacterStatRow* StatRow = CharacterStatTable->FindRow<FCharacterStatRow>(CharacterStatRowName, ContextString);
+	
+	if (StatRow)
+	{
+		CurrentStatRow = *StatRow;
+		
+		if (UCharacterMovementComponent* MovementComp = GetCharacterMovement())
+		{
+			MovementComp->MaxWalkSpeed = CurrentStatRow.WalkSpeed;
+		}
+		
+		if (HasAuthority() && GroggyAttributeSet)
+		{
+			GroggyAttributeSet->InitMaxGroggy(CurrentStatRow.MaxGroggy);
+		}
+	}
+	
+	
+}
+
+void AP48PlayerCharacter::Server_SetMaxWalkSpeed_Implementation(float NewSpeed)
+{
+	if (GetCharacterMovement())
+	{
+		GetCharacterMovement()->MaxWalkSpeed = NewSpeed;
 	}
 }
