@@ -8,6 +8,7 @@
 class UStaticMeshComponent;
 class UBoxComponent;
 class UPrimitiveComponent;
+class UGameplayEffect;
 
 UCLASS()
 class PROJECT48_API AP48WeaponBase : public AActor
@@ -45,6 +46,9 @@ protected:
 	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon|Data")
 	FDataTableRowHandle WeaponDataHandle;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|GAS")
+	TSubclassOf<UGameplayEffect> GroggyDamageEffectClass;
 	
 private:
 	void ApplyWeaponData();

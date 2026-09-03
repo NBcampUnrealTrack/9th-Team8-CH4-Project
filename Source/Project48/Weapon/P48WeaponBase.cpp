@@ -4,6 +4,10 @@
 #include "Engine/StaticMesh.h"
 #include "Engine/CollisionProfile.h"
 #include "Components/BoxComponent.h"
+#include "AbilitySystemBlueprintLibrary.h"
+#include "AbilitySystemComponent.h"
+#include "GameplayEffect.h"
+#include "GameplayTagContainer.h"
 
 AP48WeaponBase::AP48WeaponBase()
 {
@@ -184,12 +188,12 @@ void AP48WeaponBase::OnAttackCollisionBeginOverlap(
 	int32 OtherBodyIndex,
 	bool bFromSweep,
 	const FHitResult& SweepResult)
-{
+{	
 	if (!HasAuthority())
 	{
 		return;
 	}
-	
+		
 	if (!bIsAttackDetectionActive)
 	{
 		return;
@@ -216,16 +220,19 @@ void AP48WeaponBase::OnAttackCollisionBeginOverlap(
 
 void AP48WeaponBase::HandleWeaponHit(AActor* HitActor)
 {
+	// 서버에서만 무기 피격 처리
 	if (!HasAuthority())
 	{
 		return;
 	}
 	
+	// 유효하지 않은 피격 대상 제외
 	if (!IsValid(HitActor))
 	{
 		return;
 	}
 	
+	// 무기 DT와 그로기 GE 설정 검증
 	if (!bHasValidWeaponData)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("%s: 유효한 무기가 없어 피격을 처리할 수 없습니다."), *GetName());
@@ -233,13 +240,61 @@ void AP48WeaponBase::HandleWeaponHit(AActor* HitActor)
 		return;
 	}
 	
-	UE_LOG(LogTemp,
+	if (!GroggyDamageEffectClass)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("%s GroggyDamageEffectClass가 설정되지 않았습니다."), *GetName());
+		
+		return;
+	}
+	
+	// 피격 대상 ASC 조회. ASC가 없는 오브젝트 공격 대상 제외
+	UAbilitySystemComponent* TargetASC = 
+		UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(HitActor);
+	
+	if (!TargetASC)
+	{
+		UE_LOG(
+			LogTemp,
+			Verbose,
+			TEXT("%s: 대상 %s에 ASC가 없어 피격을 무시합니다."),
+			*GetName(),
+			*HitActor->GetName());
+		
+		return;
+	}
+	
+	// 무기 DT의 GroggyDamage를 전달할 GE Spec 생성
+	FGameplayEffectContextHandle EffectContext = TargetASC->MakeEffectContext();
+	
+	EffectContext.AddSourceObject(this);
+	
+	FGameplayEffectSpecHandle EffectSpecHandle =
+		TargetASC->MakeOutgoingSpec(
+			GroggyDamageEffectClass,
+			1.0f,
+			EffectContext);
+	
+	if (!EffectSpecHandle.IsValid())
+	{
+		UE_LOG(LogTemp, Error, TEXT("%s Groggy GameplayEffect Spec 생성에 실패했습니다."), *GetName());
+		
+		return;
+	}
+	
+	const FGameplayTag GroggyDamageTag =
+		FGameplayTag::RequestGameplayTag(FName(TEXT("Data.GroggyDamage")));
+	
+	// GE_GroggyDamage의 Data.GroggyDamage에 무기별 수치 전달
+	EffectSpecHandle.Data->SetSetByCallerMagnitude(GroggyDamageTag, CachedWeaponData.GroggyDamage);
+	
+	// 대상 ASC에 그로기 GE 적용
+	TargetASC->ApplyGameplayEffectSpecToSelf(*EffectSpecHandle.Data.Get());
+	
+	UE_LOG(
+		LogTemp,
 		Log,
-		TEXT("%s: 공격 대상=%s, Row=%s, GroggyDamage=%.1f,"
-		"KnockbackPower=%1f"),
+		TEXT("%s: %s에게 GroggyDamage %.1f 적용"),
 		*GetName(),
 		*HitActor->GetName(),
-		*WeaponDataHandle.RowName.ToString(),
-		CachedWeaponData.GroggyDamage,
-		CachedWeaponData.KnockbackPower);
+		CachedWeaponData.GroggyDamage);
 }
