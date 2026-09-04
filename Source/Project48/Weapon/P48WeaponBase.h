@@ -74,4 +74,6 @@ private:
 	TSet<TWeakObjectPtr<AActor>> HitActorsThisAttack;
 	
 	void HandleWeaponHit(AActor* HitActor);
+	
+	FVector CalculateKnockbackDirection(const AActor* HitActor) const;
 };

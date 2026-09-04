@@ -263,6 +263,20 @@ void AP48WeaponBase::HandleWeaponHit(AActor* HitActor)
 		return;
 	}
 	
+	// 플레이어 피격 함수에 전달할 넉백 정보
+	const FVector KnockbackDirection = CalculateKnockbackDirection(HitActor);
+	
+	const float KnockbackPower = FMath::Max(CachedWeaponData.KnockbackPower, 0.0f);
+	
+	UE_LOG(
+		LogTemp,
+		Log,
+		TEXT("%s: Knockback Target=%s, Direction=%s, Power=%.1f"),
+		*GetName(),
+		*HitActor->GetName(),
+		*KnockbackDirection.ToString(),
+		KnockbackPower);
+	
 	// 무기 DT의 GroggyDamage를 전달할 GE Spec 생성
 	FGameplayEffectContextHandle EffectContext = TargetASC->MakeEffectContext();
 	
@@ -297,4 +311,22 @@ void AP48WeaponBase::HandleWeaponHit(AActor* HitActor)
 		*GetName(),
 		*HitActor->GetName(),
 		CachedWeaponData.GroggyDamage);
+}
+
+FVector AP48WeaponBase::CalculateKnockbackDirection(const AActor* HitActor) const
+{
+	if (!IsValid(HitActor))
+	{
+		return FVector::ZeroVector;
+	}
+	
+	// 무기 소유자가 있으면 공격자 기준 계산, 없으면 무기 위치 기준 계산(테스트용)
+	const AActor* WeaponOwner = GetOwner();
+	const AActor* KnockbackSource = IsValid(WeaponOwner) ? WeaponOwner : this;
+	
+	FVector KnockbackDirection = HitActor->GetActorLocation() - KnockbackSource->GetActorLocation();
+	
+	KnockbackDirection.Z = 0.0f;
+	
+	return KnockbackDirection.GetSafeNormal();
 }
