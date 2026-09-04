@@ -124,11 +124,7 @@ void AP48GameStateBase::OnRep_RoundDraw()
 }
 
 /**
- * @brief UI담당자가 사용할 함수입니다.
- * 
- * bIsDraw == true : 무승부 UI 표시
- * Winner Is Valid : Winner의 PlayerName등을 사용해 승자 UI 표시
- * 둘 다 아님 : 결과 UI 숨기기
+ * @brief 현재 라운드 결과를 로그로 출력하고 UI용 델리게이트를 호출합니다.
  */
 void AP48GameStateBase::NotifyRoundResultChanged()
 {
