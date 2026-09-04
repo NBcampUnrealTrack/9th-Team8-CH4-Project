@@ -140,8 +140,7 @@ void AP48SurvivalGameMode::CheckRoundEndCondition()
 	FinishSurvivalRound(AliveCount == 1 ? LastAliveParticipant() : nullptr);
 }
 
-void AP48SurvivalGameMode::FinishSurvivalRound(
-	AP48PlayerState* Winner)
+void AP48SurvivalGameMode::FinishSurvivalRound(AP48PlayerState* Winner)
 {
 	AP48GameStateBase* P48GameState = GetGameState<AP48GameStateBase>();
 	if (HasAuthority() == false
@@ -153,17 +152,12 @@ void AP48SurvivalGameMode::FinishSurvivalRound(
 
 	if (IsValid(Winner))
 	{
+		P48GameState->SetRoundWinner(Winner); //라운드 승자
 		Winner->AddRoundWin();
-
-		UE_LOG(
-			LogTemp,
-			Warning,
-			TEXT("[Server] Round winner: %s"),
-			*Winner->GetPlayerName());
 	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Server] Round ended in a draw"));
+		P48GameState->SetRoundDraw(); //무승부
 	}
 
 	StartRoundEnd();
@@ -197,6 +191,13 @@ void AP48SurvivalGameMode::StartMatch()
 	GetWorldTimerManager().ClearTimer(RoundEndCheckTimerHandle);
 	bRoundEndCheck = false;
 
+	AP48GameStateBase* P48GameState = GetGameState<AP48GameStateBase>();
+	if (IsValid(P48GameState) == false)
+	{
+		return;
+	}
+	
+	P48GameState->ResetRoundResult();
 	ResetParticipantsForRound();
 	Super::StartMatch();
 
