@@ -49,11 +49,26 @@ protected:
 	
 	void InitializeStatsFromDataTable();
 	
+	//attack/hit
+	UFUNCTION(BlueprintCallable, Category="Attack|Attack")
+	void OnRightHandOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+	
+	UFUNCTION(BlueprintCallable, Category="Attack|Hit")
+	void OnHit(const FVector& HitLocation, const FVector& HitDirection, float ImpulseStrength);
+	
 public:	
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 	
 	//GAS
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
+	
+	//attack/hit
+	UFUNCTION(BlueprintCallable, Category="Attack|Attack")
+	void StartPunchAttack();
+	
+	UFUNCTION(BlueprintCallable, Category="Attack|Attack")
+	void StopPunchAttack();
+
 	
 private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components|Camera", meta=(AllowPrivateAccess="true"))
@@ -117,6 +132,20 @@ private:
 	//ServerRPC
 	UFUNCTION(Server, Reliable)
 	void Server_SetMaxWalkSpeed(float NewSpeed);
+	
+	UFUNCTION(Server, Unreliable)
+	void Server_Attack();
+	
+	//MulticastRPC
+	UFUNCTION(NetMulticast, Unreliable)
+	void Multicast_OnHit(const FVector& HitLocation, const FVector& Impulse);
+	
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_PlayPunchMontage();
+	
+	//attack/hit
+	UPROPERTY()
+	TSet<TWeakObjectPtr<AActor>> HitActorThisPunch;
 	
 	void Move(const FInputActionValue& Value);
 	void Look(const FInputActionValue& Value);
