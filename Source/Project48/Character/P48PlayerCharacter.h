@@ -15,6 +15,7 @@ class USphereComponent;
 class UAbilitySystemComponent;
 class UGameplayEffect;
 class UP48GroggyAttributeSet;
+class UP48PlayerNameWidgetComponent;
 struct FInputActionValue;
 
 UCLASS()
@@ -55,6 +56,12 @@ protected:
 	
 	UFUNCTION(BlueprintCallable, Category="Attack|Hit")
 	void OnHit(const FVector& HitLocation, const FVector& HitDirection, float ImpulseStrength);
+	
+	//UI
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="UI|Nickname")
+	TObjectPtr<UP48PlayerNameWidgetComponent> NicknameWidgetComponent;
+	
+	void UpdateNickname();
 	
 public:	
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;

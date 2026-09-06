@@ -4,6 +4,9 @@
 #include "Project48/DataTable/CharacterStatDataTypes.h"
 #include "Project48/Effect/P48GE_Run.h"
 #include "Project48/Effect/P48GE_Damage.h"
+#include "Project48/UI/P48PlayerNameWidgetComponent.h"
+#include "Project48/UI/P48PlayerNameWidget.h"
+#include "Project48/Character/P48PlayerState.h"
 
 #include "Components/CapsuleComponent.h"
 #include "EnhancedInputComponent.h"
@@ -99,6 +102,11 @@ AP48PlayerCharacter::AP48PlayerCharacter()
 	RightHandHitbox->SetGenerateOverlapEvents(true);
 	
 	RunEffectClass = UP48GE_Run::StaticClass();
+	
+	//UI
+	NicknameWidgetComponent = CreateDefaultSubobject<UP48PlayerNameWidgetComponent>(TEXT("NicknameWidgetComponent"));
+	NicknameWidgetComponent->SetupAttachment(RootComponent);
+	NicknameWidgetComponent->SetRelativeLocation(FVector(0.f, 0.f, 100.f));
 }
 
 void AP48PlayerCharacter::BeginPlay()
@@ -151,6 +159,8 @@ void AP48PlayerCharacter::OnRep_PlayerState()
 	}
 	
 	InitializeStatsFromDataTable();
+	
+	UpdateNickname();
 }
 
 
@@ -490,4 +500,25 @@ void AP48PlayerCharacter::Multicast_PlayPunchMontage_Implementation()
 		PlayAnimMontage(PunchAttackMontage);
 	}
 	UE_LOG(LogTemp, Warning, TEXT("[Multi] Multicast_PlayPunchMontage"));
+}
+
+void AP48PlayerCharacter::UpdateNickname()
+{
+	if (!NicknameWidgetComponent)
+	{
+		return;
+	}
+	AP48PlayerState* PS = Cast<AP48PlayerState>(GetPlayerState());
+	if (!PS)
+	{
+		UE_LOG(LogTemp, Error, TEXT("PS생성 못함"));
+		return;
+	}
+	UP48PlayerNameWidget* NicknameWidget = Cast<UP48PlayerNameWidget>(NicknameWidgetComponent->GetUserWidgetObject());
+	if (!NicknameWidget)
+	{
+		UE_LOG(LogTemp, Error, TEXT("NW생성 못함"));
+		return;
+	}
+	NicknameWidget->SetPlayerName(PS->GetPlayerName());
 }
