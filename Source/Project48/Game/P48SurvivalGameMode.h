@@ -48,6 +48,16 @@ protected:
 	// Match 참가자들의 생존 상태 초기화
 	void ResetParticipantsForRound();
 	
+	// Match 승리를 위한 라운드 승수 조건
+	UPROPERTY(EditDefaultsOnly, Category = "Match")
+	int32 RoundWinsToWinMatch = 2;
+
+	// Match의 승자 선정
+	AP48PlayerState* FindMatchWinner() const;
+
+	// Match 끝내기
+	void StartMatchEnd(AP48PlayerState* Winner);
+	
 private:
 	FTimerHandle RoundEndCheckTimerHandle;
 

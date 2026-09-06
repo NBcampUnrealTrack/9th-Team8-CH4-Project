@@ -141,6 +141,7 @@ void AP48GameModeBase::CheckStartCondition()
 		return;
 	}
 	
+	P48GameState->ResetMatchResult();
 	ConfirmMatchParticipants();
 
 	UE_LOG(LogTemp,Warning,TEXT("[Server] Start condition met: %d/%d, All players ready"),GetNumPlayers(),MinPlayersToStart);
@@ -204,7 +205,13 @@ void AP48GameModeBase::ConfirmMatchParticipants()
 void AP48GameModeBase::StartCountdown()
 {
 	AP48GameStateBase* P48GameState = GetGameState<AP48GameStateBase>();
-	if (IsValid(P48GameState) == false)
+	if (!HasAuthority() || !IsValid(P48GameState))
+	{
+		return;
+	}
+
+	if (P48GameState->MatchPhase != EP48MatchPhase::Waiting
+		&& P48GameState->MatchPhase != EP48MatchPhase::RoundEnd)
 	{
 		return;
 	}
@@ -224,7 +231,7 @@ void AP48GameModeBase::StartCountdown()
 void AP48GameModeBase::StartMatch()
 {
 	AP48GameStateBase* P48GameState = GetGameState<AP48GameStateBase>();
-	if (IsValid(P48GameState) == false)
+	if (!HasAuthority() || !IsValid(P48GameState) || P48GameState->MatchPhase != EP48MatchPhase::Countdown)
 	{
 		return;
 	}
