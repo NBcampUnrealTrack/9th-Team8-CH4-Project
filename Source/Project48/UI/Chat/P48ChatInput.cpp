@@ -1,6 +1,6 @@
 #include "P48ChatInput.h"
 #include "Components/EditableTextBox.h"
-#include "HSPlayerController.h"
+#include "Project48/UI/HS/HSPlayerController.h"
 
 void UP48ChatInput::NativeConstruct()
 {

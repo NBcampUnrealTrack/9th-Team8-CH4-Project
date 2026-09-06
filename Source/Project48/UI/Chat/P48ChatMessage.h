@@ -2,9 +2,9 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
-#include "ChatMessageData.h"
 #include "P48ChatMessage.generated.h"
 
+struct FChatMessage;
 class UTextBlock;
 
 UCLASS()
