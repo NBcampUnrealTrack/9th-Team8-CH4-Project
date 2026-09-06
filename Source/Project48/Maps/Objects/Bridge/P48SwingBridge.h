@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "../../Datas/Structs/P48BridgeNetworkState.h"
 #include "../../Datas/Structs/P48SwingBridgeSettings.h"
 #include "GameFramework/Actor.h"
 #include "P48SwingBridge.generated.h"
@@ -12,9 +13,11 @@ class UStaticMeshComponent;
 class UBoxComponent;
 class UP48BridgeLayoutComponent;
 class UP48BridgeLoadComponent;
+class UP48BridgeNetworkSyncComponent;
 class UP48BridgePhysicsComponent;
 class UP48BridgeRopePathComponent;
 class UP48MeshBoundsComponent;
+
 struct FP48BridgeLayoutResult;
 struct FP48BridgeAttachedMeshAssetSettings;
 struct FP48BridgeRopeAssetSettings;
@@ -52,17 +55,17 @@ private:
 	UFUNCTION()
 	void OnRep_BridgeDefinition();
 	UFUNCTION()
-	void HandlePlankHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComponent, FVector NormalImpulse, const FHitResult& Hit);
-	UFUNCTION(Server, Reliable)
-	void ServerApplyBridgeImpulse(FVector WorldLocation, FVector WorldImpulse);
-	UFUNCTION(NetMulticast, Unreliable)
-	void MulticastApplyBridgeImpulse(FVector WorldLocation, FVector WorldImpulse);
-	UFUNCTION(NetMulticast, Unreliable)
-	void MulticastApplyBridgeImpact(FVector WorldLocation, FVector NormalImpulse, FVector OtherVelocity);
+	void OnRep_BridgeNetworkState();
 	void ClearGeneratedComponents();
 	void PlacePlanks(const FP48BridgeLayoutResult& LayoutResult);
-	void PlaceAttachedMeshes(const FP48BridgeAttachedMeshAssetSettings& AssetSettings, const TArray<FTransform>& Transforms, const TCHAR* NamePrefix, TArray<TObjectPtr<UStaticMeshComponent>>& OutComponents);
+	void PlacePlankWalkCollisions(const FP48BridgeLayoutResult& LayoutResult);
+	void PlaceAttachedMeshes(const FP48BridgeAttachedMeshAssetSettings& AssetSettings, const TArray<FTransform>& Transforms, const TCHAR* NamePrefix, TArray<TObjectPtr<UStaticMeshComponent>>& OutComponents, bool bAllowCollision = true);
 	void PlaceRopes(const FP48BridgeRopePathResult& RopeResult);
+	void TickServerSimulation(float DeltaSeconds);
+	void TickClientInterpolation(float DeltaSeconds);
+	void ApplyNodeState(const TArray<FP48BridgePlankNode>& Nodes);
+	void PublishNetworkState();
+	int32 ResolveGenerationId() const;
 	void ApplyPlankTransforms(const TArray<FTransform>& PlankTransforms);
 	void ApplyStaticMeshTransforms(const TArray<FTransform>& Transforms, const TArray<TObjectPtr<UStaticMeshComponent>>& Components);
 	void ApplyRopePaths(const FP48BridgeRopePathResult& RopeResult, bool bUpdateCollision);
@@ -72,6 +75,7 @@ private:
 	void CreateSplineMeshComponents(int32 Count, const TCHAR* NamePrefix, const FP48BridgeRopeAssetSettings& RopeAssets, TArray<TObjectPtr<USplineMeshComponent>>& OutComponents);
 	void CreateRopeCollisionComponents(int32 Count);
 	void ApplyRopeCollision(const FP48BridgeRopePathResult& RopeResult);
+	void ApplyPlankWalkCollisionTransforms(const TArray<FTransform>& PlankTransforms);
 
 	UPROPERTY(VisibleAnywhere, Category = "Bridge|Component")
 	TObjectPtr<USceneComponent> SceneRoot;
@@ -86,12 +90,16 @@ private:
 	UPROPERTY(VisibleAnywhere, Category = "Bridge|Component")
 	TObjectPtr<UP48BridgeLoadComponent> BridgeLoadComponent;
 	UPROPERTY(VisibleAnywhere, Category = "Bridge|Component")
+	TObjectPtr<UP48BridgeNetworkSyncComponent> BridgeNetworkSyncComponent;
+	UPROPERTY(VisibleAnywhere, Category = "Bridge|Component")
 	TObjectPtr<UP48BridgePhysicsComponent> BridgePhysicsComponent;
 	UPROPERTY(VisibleAnywhere, Category = "Bridge|Component")
 	TObjectPtr<UP48BridgeRopePathComponent> BridgeRopePathComponent;
 	
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UStaticMeshComponent>> PlankComponents;
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UBoxComponent>> PlankWalkCollisionComponents;
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UStaticMeshComponent>> LeftPlankLashingComponents;
 	UPROPERTY(Transient)
@@ -114,8 +122,14 @@ private:
 	TArray<TObjectPtr<USplineMeshComponent>> RightLowerRopeComponents;
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UBoxComponent>> RopeCollisionComponents;
+	UPROPERTY(ReplicatedUsing = OnRep_BridgeNetworkState)
+	FP48BridgeNetworkState BridgeNetworkState;
 
 	float LoadUpdateAccumulator = 0.0f;
-	float RopeCollisionUpdateAccumulator = 0.0f;
+	float NetworkUpdateAccumulator = 0.0f;
+	uint16 SimulationFrame = 0;
+	int32 BridgeGenerationId = 0;
+	TArray<FP48BridgePlankNode> RestNodes;
+	TArray<FP48BridgePlankNode> ClientNodes;
 	bool bIsRebuilding = false;
 };

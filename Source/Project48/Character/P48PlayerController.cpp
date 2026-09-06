@@ -6,6 +6,8 @@
 #include "InputMappingContext.h"
 #include "Blueprint/UserWidget.h"
 #include "Project48/Game/P48GameModeBase.h"
+#include "Project48/Maps/PCG/Common/P48PCGSeedState.h"
+#include "EngineUtils.h"
 
 void AP48PlayerController::BeginPlay()
 {
@@ -82,5 +84,21 @@ void AP48PlayerController::Server_SetReady_Implementation(bool bNewReady)
 	if (AP48GameModeBase* GameMode = GetWorld()->GetAuthGameMode<AP48GameModeBase>())
 	{
 		GameMode->NotifyPlayerReadyStateChanged();
+	}
+}
+
+void AP48PlayerController::ReportMapGenerationComplete(const int32 GenerationId)
+{
+	if (!IsLocalController()) { return; }
+	if (HasAuthority()) { Server_ReportMapGenerationComplete_Implementation(GenerationId); }
+	else { Server_ReportMapGenerationComplete(GenerationId); }
+}
+
+void AP48PlayerController::Server_ReportMapGenerationComplete_Implementation(const int32 GenerationId)
+{
+	for (TActorIterator<AP48PCGSeedState> It(GetWorld()); It; ++It)
+	{
+		It->NotifyClientGenerationComplete(this, GenerationId);
+		break;
 	}
 }

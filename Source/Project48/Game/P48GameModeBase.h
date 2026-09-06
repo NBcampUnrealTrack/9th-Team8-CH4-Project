@@ -15,10 +15,12 @@ class PROJECT48_API AP48GameModeBase : public AGameModeBase
 	GENERATED_BODY()
 	
 public:
+	virtual void HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer) override;
 	virtual void OnPostLogin(AController* NewPlayer) override;
 	virtual void Logout(AController* Exit) override;
 	
 	void NotifyPlayerReadyStateChanged();
+	void NotifyMapGenerationReadinessChanged();
 	
 protected:
 	
@@ -36,8 +38,11 @@ protected:
 	
 	FTimerHandle CountdownTimerHandle;
 	FTimerHandle RoundEndTimerHandle;
+	TArray<TWeakObjectPtr<APlayerController>> PlayersWaitingForMap;
 	
 	void CheckStartCondition();
+	bool IsMapReadyForPlayer(const APlayerController* PlayerController) const;
+	void SpawnPlayersWaitingForMap();
 	bool AreAllPlayersReady() const;
 	void ConfirmMatchParticipants();
 	

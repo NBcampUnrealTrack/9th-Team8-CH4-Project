@@ -1,4 +1,5 @@
 #include "P48PCGBridgeNetworkSettings.h"
+#include "../Common/P48PCGSeedHelpers.h"
 
 #include "../Common/P48PCGSpawnAttributeNames.h"
 #include "Data/PCGPointData.h"
@@ -216,6 +217,7 @@ TArray<FPCGPinProperties> UP48PCGBridgeNetworkSettings::InputPinProperties() con
 	TArray<FPCGPinProperties> Pins;
 	FPCGPinProperties& Input = Pins.Emplace_GetRef(PCGPinConstants::DefaultInputLabel, EPCGDataType::Point);
 	Input.SetRequiredPin();
+	Pins.Emplace(P48PCGSeedNames::InputPin, EPCGDataType::Param);
 	return Pins;
 }
 
@@ -253,7 +255,7 @@ bool FP48PCGBridgeNetworkElement::ExecuteInternal(FPCGContext* Context) const
 
 		const FPCGMetadataAttribute<float>* RadiusAttribute = InputPoints->Metadata->GetConstTypedAttribute<float>(P48PCGSpawnAttributeNames::PlacementRadius);
 		const FPCGMetadataAttribute<int32>* IslandIndexAttribute = InputPoints->Metadata->GetConstTypedAttribute<int32>(P48PCGSpawnAttributeNames::IslandIndex);
-		const bool bSurfaceInput = InputPoints->Metadata->GetConstTypedAttribute<FVector>(TEXT("SurfaceNormal")) != nullptr;
+		const bool bSurfaceInput = InputPoints->Metadata->GetConstTypedAttribute<FVector>(P48PCGSpawnAttributeNames::SurfaceNormal) != nullptr;
 		if (bSurfaceInput && !IslandIndexAttribute)
 		{
 			PCGE_LOG(Error, GraphAndLog, LOCTEXT("MissingIslandId", "Surface points require IslandIndex to group points by island."));
@@ -362,7 +364,7 @@ bool FP48PCGBridgeNetworkElement::ExecuteInternal(FPCGContext* Context) const
 			PCGE_LOG(Error, GraphAndLog, LOCTEXT("DisconnectedGraph", "The bridge rules cannot connect every island. No complete MST exists."));
 		}
 
-		FRandomStream Random(PCGHelpers::ComputeSeed(Settings->GenerationSettings.RandomSeed, Context->GetSeed()));
+		FRandomStream Random(PCGHelpers::ComputeSeed(Settings->GenerationSettings.RandomSeed, P48ReadNetworkSeed(Context)));
 		for (int32 EdgeIndex = 0; EdgeIndex < ValidEdges.Num(); ++EdgeIndex)
 		{
 			if (!SelectedEdgeSet.Contains(EdgeIndex) && Random.FRand() <= Settings->GenerationSettings.AdditionalBridgeChance)

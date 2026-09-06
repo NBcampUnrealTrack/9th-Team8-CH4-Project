@@ -1,4 +1,5 @@
 #include "P48PCGPlayerSpawnSelectorSettings.h"
+#include "../Common/P48PCGSeedHelpers.h"
 
 #include "../Common/P48PCGSpawnAttributeNames.h"
 #include "Data/PCGPointData.h"
@@ -26,6 +27,7 @@ TArray<FPCGPinProperties> UP48PCGPlayerSpawnSelectorSettings::InputPinProperties
 	TArray<FPCGPinProperties> Pins;
 	FPCGPinProperties& Input = Pins.Emplace_GetRef(PCGPinConstants::DefaultInputLabel, EPCGDataType::Point);
 	Input.SetRequiredPin();
+	Pins.Emplace(P48PCGSeedNames::InputPin, EPCGDataType::Param);
 	return Pins;
 }
 
@@ -77,7 +79,7 @@ bool FP48PCGPlayerSpawnSelectorElement::ExecuteInternal(FPCGContext* Context) co
 		const int32 TargetCount = FMath::Min(FMath::Max(1, Settings->SelectionSettings.SpawnCount), Remaining.Num());
 		if (!Remaining.IsEmpty())
 		{
-			FRandomStream Random(PCGHelpers::ComputeSeed(Settings->SelectionSettings.RandomSeed, Context->GetSeed()));
+			FRandomStream Random(PCGHelpers::ComputeSeed(Settings->SelectionSettings.RandomSeed, P48ReadNetworkSeed(Context)));
 			const int32 FirstRemainingIndex = Random.RandRange(0, Remaining.Num() - 1);
 			Selected.Add(Remaining[FirstRemainingIndex]);
 			Remaining.RemoveAtSwap(FirstRemainingIndex);

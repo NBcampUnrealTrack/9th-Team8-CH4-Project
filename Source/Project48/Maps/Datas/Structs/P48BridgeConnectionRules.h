@@ -9,8 +9,12 @@ struct PROJECT48_API FP48BridgeConnectionRules
 {
 	GENERATED_BODY()
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Bridge", meta = (ClampMin = "1.0", Units = "cm")) float MaxBridgeLength = 15000.0f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Bridge", meta = (ClampMin = "0.0", Units = "cm")) float MinHorizontalDistance = 500.0f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Bridge", meta = (ClampMin = "0.0", Units = "cm")) float MaxHeightDifference = 5000.0f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Bridge", meta = (ClampMin = "0.0", ClampMax = "89.0", Units = "deg")) float MaxSlopeAngle = 25.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Bridge", meta = (ClampMin = "1.0", Units = "cm"))
+	float MaxBridgeLength = 15000.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Bridge", meta = (ClampMin = "0.0", Units = "cm"))
+	float MinHorizontalDistance = 500.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Bridge", meta = (ClampMin = "0.0", Units = "cm"))
+	float MaxHeightDifference = 5000.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Bridge", meta = (ClampMin = "0.0", ClampMax = "89.0", Units = "deg"))
+	float MaxSlopeAngle = 25.0f;
 };

@@ -3,8 +3,10 @@
 #include "../../Components/Layout/P48BridgeLayoutComponent.h"
 #include "../../Components/Interaction/P48BridgeLoadComponent.h"
 #include "../../Components/Measurement/P48MeshBoundsComponent.h"
+#include "../../Components/Network/P48BridgeNetworkSyncComponent.h"
 #include "../../Components/Physics/P48BridgePhysicsComponent.h"
 #include "../../Components/Rope/P48BridgeRopePathComponent.h"
+#include "../../PCG/Common/P48PCGSeedState.h"
 #include "Components/ActorComponent.h"
 #include "Components/BoxComponent.h"
 #include "Components/SceneComponent.h"
@@ -13,13 +15,17 @@
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
+#include "EngineUtils.h"
 #include "Net/UnrealNetwork.h"
 
 AP48SwingBridge::AP48SwingBridge()
 {
 	PrimaryActorTick.bCanEverTick = true;
 	bReplicates = true;
+	bAlwaysRelevant = true;
 	SetReplicateMovement(false);
+	NetUpdateFrequency = 20.0f;
+	MinNetUpdateFrequency = 10.0f;
 	SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
 	SetRootComponent(SceneRoot);
 	LeftMainRopeSpline = CreateDefaultSubobject<USplineComponent>(TEXT("LeftMainRopeSpline"));
@@ -29,6 +35,7 @@ AP48SwingBridge::AP48SwingBridge()
 	MeshBoundsComponent = CreateDefaultSubobject<UP48MeshBoundsComponent>(TEXT("MeshBoundsComponent"));
 	BridgeLayoutComponent = CreateDefaultSubobject<UP48BridgeLayoutComponent>(TEXT("BridgeLayoutComponent"));
 	BridgeLoadComponent = CreateDefaultSubobject<UP48BridgeLoadComponent>(TEXT("BridgeLoadComponent"));
+	BridgeNetworkSyncComponent = CreateDefaultSubobject<UP48BridgeNetworkSyncComponent>(TEXT("BridgeNetworkSyncComponent"));
 	BridgePhysicsComponent = CreateDefaultSubobject<UP48BridgePhysicsComponent>(TEXT("BridgePhysicsComponent"));
 	BridgeRopePathComponent = CreateDefaultSubobject<UP48BridgeRopePathComponent>(TEXT("BridgeRopePathComponent"));
 }
@@ -48,40 +55,72 @@ void AP48SwingBridge::BeginPlay()
 void AP48SwingBridge::Tick(const float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
-	if (!Settings.Physics.bEnableSimulation || !IsPlayerNearBridge() || !BridgePhysicsComponent->Advance(DeltaSeconds, Settings.Physics.Behavior))
+	if (HasAuthority())
+	{
+		TickServerSimulation(DeltaSeconds);
+	}
+	else
+	{
+		TickClientInterpolation(DeltaSeconds);
+	}
+}
+
+void AP48SwingBridge::TickServerSimulation(const float DeltaSeconds)
+{
+	if (!Settings.Physics.bEnableSimulation)
 	{
 		return;
 	}
+
+	const bool bPlayerNearBridge = IsPlayerNearBridge();
+	const bool bBridgeMoving = !BridgePhysicsComponent->IsSettled();
+
+	if (!bPlayerNearBridge && !bBridgeMoving)
+	{
+		return;
+	}
+
 	LoadUpdateAccumulator += DeltaSeconds;
+
 	if (LoadUpdateAccumulator >= 0.1f)
 	{
 		LoadUpdateAccumulator = FMath::Fmod(LoadUpdateAccumulator, 0.1f);
+
 		TArray<FP48BridgeLoadValue> StandingLoads;
-		BridgeLoadComponent->CalculateStandingLoads(PlankComponents, StandingLoads);
+
+		BridgeLoadComponent->CalculateStandingLoads(PlankWalkCollisionComponents, StandingLoads);
+
 		for (const FP48BridgeLoadValue& Load : StandingLoads)
 		{
 			BridgePhysicsComponent->AddImpulseAtLocation(Load.WorldLocation, Load.Acceleration);
 		}
 	}
-	TArray<FTransform> PlankTransforms;
-	BridgeLayoutComponent->CalculatePlankTransforms(BridgePhysicsComponent->GetNodes(), Settings, PlankTransforms);
-	ApplyPlankTransforms(PlankTransforms);
-	TArray<FTransform> LeftPlankLashingTransforms;
-	TArray<FTransform> RightPlankLashingTransforms;
-	BridgeLayoutComponent->CalculateAttachedTransforms(PlankTransforms, Settings.Assets.LeftPlankLashing, LeftPlankLashingTransforms);
-	BridgeLayoutComponent->CalculateAttachedTransforms(PlankTransforms, Settings.Assets.RightPlankLashing, RightPlankLashingTransforms);
-	ApplyStaticMeshTransforms(LeftPlankLashingTransforms, LeftPlankLashingComponents);
-	ApplyStaticMeshTransforms(RightPlankLashingTransforms, RightPlankLashingComponents);
-	FP48BridgeRopePathResult RopeResult;
-	if (BridgeRopePathComponent->CalculatePaths(BridgePhysicsComponent->GetNodes(), Settings.Layout.MainRopeHeight, Settings.Collision.RopeCollisionRadius, RopeResult))
+
+	if (!BridgePhysicsComponent->Advance(DeltaSeconds, Settings.Physics.Behavior))
 	{
-		RopeCollisionUpdateAccumulator += DeltaSeconds;
-		const bool bUpdateCollision = RopeCollisionUpdateAccumulator >= 0.1f;
-		if (bUpdateCollision)
-		{
-			RopeCollisionUpdateAccumulator = FMath::Fmod(RopeCollisionUpdateAccumulator, 0.1f);
-		}
-		ApplyRopePaths(RopeResult, bUpdateCollision);
+		return;
+	}
+
+	ApplyNodeState(BridgePhysicsComponent->GetNodes());
+
+	constexpr float NetworkUpdateInterval = 0.05f;
+
+	NetworkUpdateAccumulator += DeltaSeconds;
+
+	if (NetworkUpdateAccumulator >= NetworkUpdateInterval)
+	{
+		NetworkUpdateAccumulator = FMath::Fmod(NetworkUpdateAccumulator, NetworkUpdateInterval);
+		PublishNetworkState();
+	}
+}
+
+void AP48SwingBridge::TickClientInterpolation(const float DeltaSeconds)
+{
+	if (!Settings.Physics.bEnableSimulation) return;
+	
+	if (BridgeNetworkSyncComponent->CalculateClientNodes(DeltaSeconds, RestNodes, ClientNodes))
+	{
+		ApplyNodeState(ClientNodes);
 	}
 }
 
@@ -90,6 +129,7 @@ void AP48SwingBridge::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(AP48SwingBridge, StartLocation);
 	DOREPLIFETIME(AP48SwingBridge, EndLocation);
+	DOREPLIFETIME(AP48SwingBridge, BridgeNetworkState);
 }
 
 void AP48SwingBridge::RebuildBridge()
@@ -98,20 +138,24 @@ void AP48SwingBridge::RebuildBridge()
 	{
 		return;
 	}
+	
 	TGuardValue<bool> RebuildGuard(bIsRebuilding, true);
 	ClearGeneratedComponents();
 	LoadUpdateAccumulator = 0.0f;
-	RopeCollisionUpdateAccumulator = 0.0f;
+	NetworkUpdateAccumulator = 0.0f;
 	FP48MeasuredMeshBounds MeasuredBounds;
 	FP48BridgeLayoutResult LayoutResult;
+	
 	if (!MeshBoundsComponent->MeasureMesh(Settings.Assets.Plank.Mesh, Settings.Assets.Plank.Scale, MeasuredBounds) || !BridgeLayoutComponent->CalculateLayout(StartLocation, EndLocation, Settings, MeasuredBounds, LayoutResult))
 	{
 		return;
 	}
 	BridgePhysicsComponent->Initialize(LayoutResult);
+	RestNodes = LayoutResult.Nodes;
 	PlacePlanks(LayoutResult);
-	PlaceAttachedMeshes(Settings.Assets.LeftPlankLashing, LayoutResult.LeftPlankLashingTransforms, TEXT("GeneratedLeftPlankLashing"), LeftPlankLashingComponents);
-	PlaceAttachedMeshes(Settings.Assets.RightPlankLashing, LayoutResult.RightPlankLashingTransforms, TEXT("GeneratedRightPlankLashing"), RightPlankLashingComponents);
+	PlacePlankWalkCollisions(LayoutResult);
+	PlaceAttachedMeshes(Settings.Assets.LeftPlankLashing, LayoutResult.LeftPlankLashingTransforms, TEXT("GeneratedLeftPlankLashing"), LeftPlankLashingComponents, false);
+	PlaceAttachedMeshes(Settings.Assets.RightPlankLashing, LayoutResult.RightPlankLashingTransforms, TEXT("GeneratedRightPlankLashing"), RightPlankLashingComponents, false);
 	PlaceAttachedMeshes(Settings.Assets.AnchorPost, LayoutResult.AnchorPostTransforms, TEXT("GeneratedAnchorPost"), AnchorPostComponents);
 	if (!Settings.PostConnection.bUsePostSockets)
 	{
@@ -131,46 +175,38 @@ void AP48SwingBridge::RebuildBridge()
 	{
 		PlaceRopes(RopeResult);
 	}
+	if (GetWorld() && GetWorld()->IsGameWorld())
+	{
+		BridgeGenerationId = ResolveGenerationId();
+		if (HasAuthority())
+		{
+			PublishNetworkState();
+		}
+		else if (!BridgeNetworkState.Nodes.IsEmpty())
+		{
+			BridgeNetworkSyncComponent->ReceiveNetworkState(BridgeNetworkState);
+		}
+	}
 }
 
 void AP48SwingBridge::ApplyBridgeImpulseAtLocation(const FVector WorldLocation, const FVector WorldImpulse)
 {
-	if (HasAuthority())
+	if (!HasAuthority())
 	{
-		MulticastApplyBridgeImpulse(WorldLocation, WorldImpulse);
+		return;
 	}
-	else
-	{
-		ServerApplyBridgeImpulse(WorldLocation, WorldImpulse);
-	}
-}
 
-void AP48SwingBridge::ServerApplyBridgeImpulse_Implementation(const FVector WorldLocation, const FVector WorldImpulse)
-{
-	MulticastApplyBridgeImpulse(WorldLocation, WorldImpulse);
-}
-
-void AP48SwingBridge::MulticastApplyBridgeImpulse_Implementation(const FVector WorldLocation, const FVector WorldImpulse)
-{
 	BridgePhysicsComponent->AddImpulseAtLocation(WorldLocation, WorldImpulse);
 }
 
-void AP48SwingBridge::MulticastApplyBridgeImpact_Implementation(const FVector WorldLocation, const FVector NormalImpulse, const FVector OtherVelocity)
+void AP48SwingBridge::OnRep_BridgeNetworkState()
 {
-	BridgePhysicsComponent->AddImpactAtLocation(WorldLocation, NormalImpulse, OtherVelocity, Settings.Physics.ImpactStrength);
+	BridgeNetworkSyncComponent->ReceiveNetworkState(BridgeNetworkState);
 }
 
 void AP48SwingBridge::OnRep_BridgeDefinition()
 {
 	RebuildBridge();
-}
-
-void AP48SwingBridge::HandlePlankHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComponent, const FVector NormalImpulse, const FHitResult& Hit)
-{
-	if (HasAuthority() && OtherActor && OtherActor != this)
-	{
-		MulticastApplyBridgeImpact(Hit.ImpactPoint, NormalImpulse, OtherActor->GetVelocity());
-	}
 }
 
 void AP48SwingBridge::ClearGeneratedComponents()
@@ -184,6 +220,7 @@ void AP48SwingBridge::ClearGeneratedComponents()
 		}
 	}
 	PlankComponents.Reset();
+	PlankWalkCollisionComponents.Reset();
 	LeftPlankLashingComponents.Reset();
 	RightPlankLashingComponents.Reset();
 	AnchorPostComponents.Reset();
@@ -196,12 +233,15 @@ void AP48SwingBridge::ClearGeneratedComponents()
 	RightLowerRopeComponents.Reset();
 	RopeCollisionComponents.Reset();
 	BridgePhysicsComponent->ResetSimulation();
+	BridgeNetworkSyncComponent->ResetInterpolation();
+	RestNodes.Reset();
+	ClientNodes.Reset();
 	BridgeRopePathComponent->ResetPostSockets();
 	LeftMainRopeSpline->ClearSplinePoints(false);
 	RightMainRopeSpline->ClearSplinePoints(false);
 }
 
-void AP48SwingBridge::PlaceAttachedMeshes(const FP48BridgeAttachedMeshAssetSettings& AssetSettings, const TArray<FTransform>& Transforms, const TCHAR* NamePrefix, TArray<TObjectPtr<UStaticMeshComponent>>& OutComponents)
+void AP48SwingBridge::PlaceAttachedMeshes(const FP48BridgeAttachedMeshAssetSettings& AssetSettings, const TArray<FTransform>& Transforms, const TCHAR* NamePrefix, TArray<TObjectPtr<UStaticMeshComponent>>& OutComponents, bool bAllowCollision)
 {
 	if (!AssetSettings.Mesh)
 	{
@@ -214,8 +254,12 @@ void AP48SwingBridge::PlaceAttachedMeshes(const FP48BridgeAttachedMeshAssetSetti
 		Component->ComponentTags.Add(TEXT("P48GeneratedBridge"));
 		Component->SetMobility(EComponentMobility::Movable);
 		Component->SetStaticMesh(AssetSettings.Mesh);
-		Component->SetCollisionEnabled(AssetSettings.bEnableCollision ? ECollisionEnabled::QueryAndPhysics : ECollisionEnabled::NoCollision);
-		if (AssetSettings.bEnableCollision) { Component->SetCollisionProfileName(TEXT("BlockAllDynamic")); }
+		const bool bEnableCollision = bAllowCollision && AssetSettings.bEnableCollision;
+		Component->SetCollisionEnabled(bEnableCollision ? ECollisionEnabled::QueryAndPhysics : ECollisionEnabled::NoCollision);
+		if (bEnableCollision)
+		{
+			Component->SetCollisionProfileName(TEXT("BlockAllDynamic"));
+		}
 		Component->SetupAttachment(SceneRoot);
 		AddInstanceComponent(Component);
 		Component->RegisterComponent();
@@ -233,15 +277,44 @@ void AP48SwingBridge::PlacePlanks(const FP48BridgeLayoutResult& LayoutResult)
 		Plank->ComponentTags.Add(TEXT("P48GeneratedBridge"));
 		Plank->SetMobility(EComponentMobility::Movable);
 		Plank->SetStaticMesh(Settings.Assets.Plank.Mesh);
-		Plank->SetCollisionProfileName(TEXT("BlockAllDynamic"));
-		Plank->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-		Plank->SetNotifyRigidBodyCollision(true);
-		Plank->OnComponentHit.AddDynamic(this, &AP48SwingBridge::HandlePlankHit);
+		Plank->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 		Plank->SetupAttachment(SceneRoot);
 		AddInstanceComponent(Plank);
 		Plank->RegisterComponent();
 		Plank->SetWorldTransform(LayoutResult.PlankTransforms[Index]);
 		PlankComponents.Add(Plank);
+	}
+}
+
+void AP48SwingBridge::PlacePlankWalkCollisions(const FP48BridgeLayoutResult& LayoutResult)
+{
+	const UStaticMesh* PlankMesh = Settings.Assets.Plank.Mesh;
+	if (!PlankMesh)
+	{
+		return;
+	}
+	const FBoxSphereBounds Bounds = PlankMesh->GetBounds();
+	PlankWalkCollisionComponents.Reserve(LayoutResult.PlankTransforms.Num());
+	for (int32 Index = 0; Index < LayoutResult.PlankTransforms.Num(); ++Index)
+	{
+		UBoxComponent* Collision = NewObject<UBoxComponent>(this, *FString::Printf(TEXT("GeneratedPlankWalkCollision_%d"), Index));
+		Collision->ComponentTags.Add(TEXT("P48GeneratedBridge"));
+		Collision->SetNetAddressable();
+		Collision->SetMobility(EComponentMobility::Movable);
+		Collision->SetCollisionObjectType(ECC_WorldDynamic);
+		Collision->SetBoxExtent(Bounds.BoxExtent, false);
+		Collision->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+		Collision->SetCollisionResponseToAllChannels(ECR_Ignore);
+		Collision->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+		Collision->SetGenerateOverlapEvents(false);
+		Collision->SetCanEverAffectNavigation(false);
+		Collision->SetupAttachment(SceneRoot);
+		AddInstanceComponent(Collision);
+		Collision->RegisterComponent();
+		FTransform CollisionTransform = LayoutResult.PlankTransforms[Index];
+		CollisionTransform.SetLocation(CollisionTransform.TransformPosition(Bounds.Origin));
+		Collision->SetWorldTransform(CollisionTransform);
+		PlankWalkCollisionComponents.Add(Collision);
 	}
 }
 
@@ -270,6 +343,55 @@ void AP48SwingBridge::ApplyPlankTransforms(const TArray<FTransform>& PlankTransf
 	{
 		PlankComponents[Index]->SetWorldTransform(PlankTransforms[Index]);
 	}
+}
+
+void AP48SwingBridge::ApplyNodeState(const TArray<FP48BridgePlankNode>& Nodes)
+{
+	
+	TArray<FTransform> PlankTransforms;
+	BridgeLayoutComponent->CalculatePlankTransforms(Nodes, Settings, PlankTransforms);
+	ApplyPlankTransforms(PlankTransforms);
+	ApplyPlankWalkCollisionTransforms(PlankTransforms);
+
+	TArray<FTransform> LeftPlankLashingTransforms;
+	TArray<FTransform> RightPlankLashingTransforms;
+	BridgeLayoutComponent->CalculateAttachedTransforms(PlankTransforms, Settings.Assets.LeftPlankLashing, LeftPlankLashingTransforms);
+	BridgeLayoutComponent->CalculateAttachedTransforms(PlankTransforms, Settings.Assets.RightPlankLashing, RightPlankLashingTransforms);
+	ApplyStaticMeshTransforms(LeftPlankLashingTransforms, LeftPlankLashingComponents);
+	ApplyStaticMeshTransforms(RightPlankLashingTransforms, RightPlankLashingComponents);
+
+	FP48BridgeRopePathResult RopeResult;
+	if (BridgeRopePathComponent->CalculatePaths(Nodes, Settings.Layout.MainRopeHeight, Settings.Collision.RopeCollisionRadius, RopeResult))
+	{
+		// 플레이어용 충돌은 초기 경로에 고정하고 시각 메시만 갱신합니다.
+		ApplyRopePaths(RopeResult, false);
+	}
+}
+
+void AP48SwingBridge::PublishNetworkState()
+{
+	if (!HasAuthority() || !BridgePhysicsComponent->HasNodes())
+	{
+		return;
+	}
+	constexpr int32 MaxReplicatedControlPoints = 8;
+	++SimulationFrame;
+	BridgeNetworkSyncComponent->BuildNetworkState(BridgePhysicsComponent->GetNodes(), BridgeGenerationId, SimulationFrame, BridgeNetworkState);
+	ForceNetUpdate();
+}
+
+int32 AP48SwingBridge::ResolveGenerationId() const
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return 0;
+	}
+	for (TActorIterator<AP48PCGSeedState> It(World); It; ++It)
+	{
+		return It->State.Revision;
+	}
+	return 0;
 }
 
 void AP48SwingBridge::ApplyStaticMeshTransforms(const TArray<FTransform>& Transforms, const TArray<TObjectPtr<UStaticMeshComponent>>& Components)
@@ -368,9 +490,13 @@ void AP48SwingBridge::CreateRopeCollisionComponents(const int32 Count)
 	{
 		UBoxComponent* Collision = NewObject<UBoxComponent>(this, *FString::Printf(TEXT("GeneratedRopeCollision_%d"), Index));
 		Collision->ComponentTags.Add(TEXT("P48GeneratedBridge"));
+		Collision->SetNetAddressable();
 		Collision->SetMobility(EComponentMobility::Movable);
-		Collision->SetCollisionProfileName(TEXT("BlockAllDynamic"));
-		Collision->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+		Collision->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+		Collision->SetCollisionResponseToAllChannels(ECR_Ignore);
+		Collision->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+		Collision->SetGenerateOverlapEvents(false);
+		Collision->SetCanEverAffectNavigation(false);
 		Collision->SetHiddenInGame(true);
 		Collision->SetupAttachment(SceneRoot);
 		AddInstanceComponent(Collision);
@@ -400,4 +526,29 @@ void AP48SwingBridge::ApplyRopeCollision(const FP48BridgeRopePathResult& RopeRes
 	ApplyValues(RopeResult.ConnectorSegments);
 	ApplyValues(RopeResult.LeftLowerSegments);
 	ApplyValues(RopeResult.RightLowerSegments);
+}
+
+void AP48SwingBridge::ApplyPlankWalkCollisionTransforms(const TArray<FTransform>& PlankTransforms)
+{
+	const UStaticMesh* PlankMesh = Settings.Assets.Plank.Mesh;
+	if (!PlankMesh)
+	{
+		return;
+	}
+
+	const FBoxSphereBounds Bounds = PlankMesh->GetBounds();
+
+	for (int32 Index = 0; Index < PlankTransforms.Num() && PlankWalkCollisionComponents.IsValidIndex(Index); ++Index)
+	{
+		UBoxComponent* Collision = PlankWalkCollisionComponents[Index];
+		if (!IsValid(Collision))
+		{
+			continue;
+		}
+
+		FTransform CollisionTransform = PlankTransforms[Index];
+		CollisionTransform.SetLocation(CollisionTransform.TransformPosition(Bounds.Origin));
+
+		Collision->SetWorldTransform(CollisionTransform, false, nullptr, ETeleportType::None);
+	}
 }

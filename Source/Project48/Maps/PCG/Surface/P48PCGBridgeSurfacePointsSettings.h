@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "PCGContext.h"
 #include "PCGSettings.h"
 #include "P48PCGBridgeSurfacePointsSettings.generated.h"
 
@@ -41,7 +42,13 @@ protected:
 	virtual FPCGElementPtr CreateElement() const override;
 };
 
-class FP48PCGBridgeSurfacePointsElement : public IPCGElement
+struct FP48PCGBridgeSurfacePointsContext : public FPCGContext
+{
+	uint64 CollisionWaitStartFrame = 0;
+	bool bCollisionWaitStarted = false;
+};
+
+class FP48PCGBridgeSurfacePointsElement : public IPCGElementWithCustomContext<FP48PCGBridgeSurfacePointsContext>
 {
 protected:
 	virtual bool ExecuteInternal(FPCGContext* Context) const override;
