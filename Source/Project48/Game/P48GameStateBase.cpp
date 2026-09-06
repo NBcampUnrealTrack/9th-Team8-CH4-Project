@@ -28,6 +28,7 @@ void AP48GameStateBase::GetLifetimeReplicatedProps(
 	DOREPLIFETIME(AP48GameStateBase, RoundWinner);
 	DOREPLIFETIME(AP48GameStateBase, bRoundDraw);
 	DOREPLIFETIME(AP48GameStateBase, MatchWinner);
+	DOREPLIFETIME(AP48GameStateBase, bIsTiebreaker);
 }
 
 void AP48GameStateBase::SetMatchPhase(EP48MatchPhase NewMatchPhase)
@@ -171,4 +172,21 @@ void AP48GameStateBase::NotifyRoundResultChanged()
 		bRoundDraw ? TEXT("true") : TEXT("false"));
 
 	OnRoundResultChanged.Broadcast(RoundWinner, bRoundDraw);
+}
+
+void AP48GameStateBase::SetTiebreaker(bool bNewTiebreaker)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	if (bIsTiebreaker == bNewTiebreaker)
+	{
+		return;
+	}
+
+	bIsTiebreaker = bNewTiebreaker;
+
+	UE_LOG(LogTemp, Log, TEXT("[Server] Tiebreaker state: %s"), bIsTiebreaker ? TEXT("true") : TEXT("false"));
 }
