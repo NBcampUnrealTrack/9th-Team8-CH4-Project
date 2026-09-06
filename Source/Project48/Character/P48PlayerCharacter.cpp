@@ -3,6 +3,7 @@
 #include "Project48/GAS/P48GroggyAttributeSet.h"
 #include "Project48/DataTable/CharacterStatDataTypes.h"
 #include "Project48/Effect/P48GE_Run.h"
+#include "Project48/Effect/P48GE_Damage.h"
 
 #include "Components/CapsuleComponent.h"
 #include "EnhancedInputComponent.h"
@@ -86,10 +87,16 @@ AP48PlayerCharacter::AP48PlayerCharacter()
 	
 	RightHandHitbox->SetAbsolute(false, false, true);
 	RightHandHitbox->SetSphereRadius(RightHandHitboxRadius);
-	RightHandHitbox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	
+	/*RightHandHitbox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	RightHandHitbox->SetCollisionObjectType(ECC_WorldDynamic);
 	RightHandHitbox->SetCollisionResponseToAllChannels(ECR_Ignore);
-	RightHandHitbox->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+	RightHandHitbox->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);*/
+	
+	RightHandHitbox->SetCollisionProfileName(TEXT("OverlapAllDynamic"));
+	RightHandHitbox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	
+	RightHandHitbox->SetGenerateOverlapEvents(true);
 	
 	RunEffectClass = UP48GE_Run::StaticClass();
 }
@@ -102,7 +109,7 @@ void AP48PlayerCharacter::BeginPlay()
 	{
 		MeshComp->SetPhysicsBlendWeight(0.5f);
 		
-		MeshComp->SetAllBodiesBelowSimulatePhysics(TEXT("Chest"), true, true);
+		MeshComp->SetAllBodiesBelowSimulatePhysics(TEXT("spine"), true, true);
 		
 		MeshComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 	}
@@ -113,6 +120,13 @@ void AP48PlayerCharacter::BeginPlay()
 	}
 	
 	InitializeStatsFromDataTable();
+	
+	//콜리전(기본값: 끄기)
+	if (RightHandHitbox)
+	{
+		RightHandHitbox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		RightHandHitbox->OnComponentBeginOverlap.AddDynamic(this, &AP48PlayerCharacter::OnRightHandOverlap);
+	}
 }
 
 void AP48PlayerCharacter::PossessedBy(AController* NewController)
@@ -309,6 +323,8 @@ void AP48PlayerCharacter::AttackHandle()
 		}
 		Attack();
 	}
+	
+	Server_Attack();
 }
 
 UAbilitySystemComponent* AP48PlayerCharacter::GetAbilitySystemComponent() const
@@ -351,4 +367,127 @@ void AP48PlayerCharacter::Server_SetMaxWalkSpeed_Implementation(float NewSpeed)
 	{
 		GetCharacterMovement()->MaxWalkSpeed = NewSpeed;
 	}
+}
+
+void AP48PlayerCharacter::StartPunchAttack()
+{
+	HitActorThisPunch.Empty();
+	if (RightHandHitbox)
+	{
+		RightHandHitbox->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("StartPunchAttack"));
+		}
+	}
+}
+
+void AP48PlayerCharacter::StopPunchAttack()
+{
+	if (RightHandHitbox)
+	{
+		RightHandHitbox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("EndPunchAttack"));
+		}
+	}
+	HitActorThisPunch.Empty();
+}
+
+void AP48PlayerCharacter::OnRightHandOverlap(
+	UPrimitiveComponent* OverlappedComponent, 
+	AActor* OtherActor, 
+	UPrimitiveComponent* OtherComp, 
+	int32 OtherBodyIndex, 
+	bool bFromSweep, 
+	const FHitResult& SweepResult)
+{
+	if (!OtherActor || OtherActor == this)
+	{
+		return;
+	}
+	
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Blue, TEXT("Overlapp!"));
+	}
+	
+	if (HitActorThisPunch.Contains(OtherActor))
+	{
+		return;
+	}
+	HitActorThisPunch.Add(OtherActor);
+	
+	if (HasAuthority())
+	{
+		if (UAbilitySystemComponent* TargetASC = OtherActor->FindComponentByClass<UAbilitySystemComponent>())
+		{
+			FGameplayEffectContextHandle ContextHandle;
+			if (AbilitySystemComponent)
+			{
+				ContextHandle = AbilitySystemComponent->MakeEffectContext();
+			}
+			ContextHandle.AddSourceObject(this);
+			
+			TargetASC->ApplyGameplayEffectToSelf(
+				UP48GE_Damage::StaticClass()->GetDefaultObject<UGameplayEffect>(),
+				1.0f,
+				ContextHandle
+				);
+			UE_LOG(LogTemp, Warning, TEXT("Hit"));
+		}
+	}
+	
+	if (AP48PlayerCharacter* TargetCharacter = Cast<AP48PlayerCharacter>(OtherActor))
+	{
+		const FVector HitDir = (TargetCharacter->GetActorLocation() - GetActorLocation()).GetSafeNormal();
+		const FVector HitLoc = RightHandHitbox ? RightHandHitbox->GetComponentLocation() : TargetCharacter->GetActorLocation();
+		
+		TargetCharacter->OnHit(HitLoc, HitDir, 60000.f);
+	}
+}
+
+void AP48PlayerCharacter::OnHit(const FVector& HitLocation, const FVector& HitDirection, float ImpulseStrength)
+{
+	const FVector Impulse = HitDirection.GetSafeNormal() * ImpulseStrength;
+	
+	if (HasAuthority())
+	{
+		Multicast_OnHit(HitLocation, Impulse);
+	}
+	else
+	{
+		Multicast_OnHit(HitLocation, Impulse);
+	}
+}
+
+void AP48PlayerCharacter::Multicast_OnHit_Implementation(const FVector& HitLocation, const FVector& Impulse)
+{
+	USkeletalMeshComponent* MeshComp = GetMesh();
+	if (!MeshComp)
+	{
+		return;
+	}
+	
+	//MeshComp->AddImpulseAtLocation(Impulse, HitLocation);
+	
+	MeshComp->AddImpulse(Impulse, TEXT("chest"), true);
+}
+
+void AP48PlayerCharacter::Server_Attack_Implementation()
+{
+	Multicast_PlayPunchMontage();
+	
+	UE_LOG(LogTemp, Warning, TEXT("[Server] Server_Attack"));
+}
+
+void AP48PlayerCharacter::Multicast_PlayPunchMontage_Implementation()
+{
+	if (PunchAttackMontage)
+	{
+		PlayAnimMontage(PunchAttackMontage);
+	}
+	UE_LOG(LogTemp, Warning, TEXT("[Multi] Multicast_PlayPunchMontage"));
 }
