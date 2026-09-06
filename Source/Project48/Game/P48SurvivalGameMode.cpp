@@ -160,6 +160,11 @@ void AP48SurvivalGameMode::FinishSurvivalRound(AP48PlayerState* Winner)
 		P48GameState->SetRoundDraw(); //무승부
 	}
 
+	if (AP48PlayerState* MatchWinner = FindMatchWinner()) // 라운드 2승 플레이어 등장!
+	{
+		StartMatchEnd(MatchWinner);
+		return;
+	}
 	StartRoundEnd();
 }
 
@@ -181,21 +186,39 @@ void AP48SurvivalGameMode::ResetParticipantsForRound()
 	}
 }
 
+AP48PlayerState* AP48SurvivalGameMode::FindMatchWinner() const
+{
+	const AP48GameStateBase* GS = GetGameState<AP48GameStateBase>();
+	if (!IsValid(GS))
+	{
+		return nullptr;
+	}
+
+	const int32 RequiredWins = FMath::Max(1, RoundWinsToWinMatch);
+	for (APlayerState* PS : GS->PlayerArray)
+	{
+		AP48PlayerState* Player = Cast<AP48PlayerState>(PS);
+
+		if (IsValid(Player) && Player->IsMatchParticipant() && Player->GetRoundWinCount() >= RequiredWins)
+		{
+			return Player;
+		}
+	}
+
+	return nullptr;
+}
+
 void AP48SurvivalGameMode::StartMatch()
 {
-	if (HasAuthority() == false)
+	AP48GameStateBase* P48GameState = GetGameState<AP48GameStateBase>();
+
+	if (!HasAuthority() || !IsValid(P48GameState) || P48GameState->MatchPhase != EP48MatchPhase::Countdown)
 	{
 		return;
 	}
 
 	GetWorldTimerManager().ClearTimer(RoundEndCheckTimerHandle);
 	bRoundEndCheck = false;
-
-	AP48GameStateBase* P48GameState = GetGameState<AP48GameStateBase>();
-	if (IsValid(P48GameState) == false)
-	{
-		return;
-	}
 	
 	P48GameState->ResetRoundResult();
 	ResetParticipantsForRound();
@@ -206,6 +229,24 @@ void AP48SurvivalGameMode::StartMatch()
 		Warning,
 		TEXT("[Server] Survival round started: Alive participants = %d"),
 		GetAliveParticipantCount());
+}
+
+void AP48SurvivalGameMode::StartMatchEnd(AP48PlayerState* Winner)
+{
+	AP48GameStateBase* GS = GetGameState<AP48GameStateBase>();
+	if (!HasAuthority() || !IsValid(GS) || !IsValid(Winner) || GS->MatchPhase != EP48MatchPhase::Playing)
+	{
+		return;
+	}
+
+	// 매치 종료시 타이머 정리
+	GetWorldTimerManager().ClearTimer(CountdownTimerHandle);
+	GetWorldTimerManager().ClearTimer(RoundEndTimerHandle);
+	GetWorldTimerManager().ClearTimer(RoundEndCheckTimerHandle);
+	bRoundEndCheck = false;
+
+	GS->SetMatchWinner(Winner);
+	GS->SetMatchPhase(EP48MatchPhase::MatchEnd);
 }
 
 void AP48SurvivalGameMode::Logout(AController* Exit)
