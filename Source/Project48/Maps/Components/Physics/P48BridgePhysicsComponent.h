@@ -23,6 +23,7 @@ public:
 	void AddImpactAtLocation(const FVector& WorldLocation, const FVector& NormalImpulse, const FVector& OtherVelocity, float ImpactStrength);
 	const TArray<FP48BridgePlankNode>& GetNodes() const { return Nodes; }
 	bool HasNodes() const { return Nodes.Num() >= 2; }
+	bool IsSettled(float MotionThreshold = 0.05f) const;
 
 private:
 	void SimulateStep(float FixedDeltaTime, EP48BridgeBehavior Behavior);

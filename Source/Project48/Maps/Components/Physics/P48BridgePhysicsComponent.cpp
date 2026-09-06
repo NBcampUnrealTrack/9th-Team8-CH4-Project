@@ -93,6 +93,39 @@ void UP48BridgePhysicsComponent::AddImpactAtLocation(const FVector& WorldLocatio
 	AddImpulseAtLocation(WorldLocation, Impact * ImpactStrength);
 }
 
+bool UP48BridgePhysicsComponent::IsSettled(float MotionThreshold) const
+{
+	if (!HasNodes())
+	{
+		return true;
+	}
+
+	const float ThresholdSquared = FMath::Square(MotionThreshold);
+
+	for (const FP48BridgePlankNode& Node : Nodes)
+	{
+		if (Node.bFixed)
+		{
+			continue;
+		}
+
+		const float LeftMotionSquared = FVector::DistSquared(Node.CurrentLeft, Node.PreviousLeft);
+		const float RightMotionSquared = FVector::DistSquared(Node.CurrentRight, Node.PreviousRight);
+
+		if (LeftMotionSquared > ThresholdSquared || RightMotionSquared > ThresholdSquared)
+		{
+			return false;
+		}
+
+		if (!Node.AccumulatedLeftAcceleration.IsNearlyZero() || !Node.AccumulatedRightAcceleration.IsNearlyZero())
+		{
+			return false;
+		}
+	}
+
+	return true;
+}
+
 void UP48BridgePhysicsComponent::SimulateStep(const float FixedDeltaTime, const EP48BridgeBehavior Behavior)
 {
 	const FP48BridgeSolverValues Values = GetSolverValues(Behavior);

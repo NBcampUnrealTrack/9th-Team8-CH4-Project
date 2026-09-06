@@ -6,8 +6,9 @@
 #include "Engine/StaticMesh.h"
 #include "Metadata/PCGMetadata.h"
 #include "Metadata/PCGMetadataAttribute.h"
-#include "PCGComponent.h"
+#include "Engine/World.h"
 #include "PCGContext.h"
+#include "PCGModule.h"
 
 #define LOCTEXT_NAMESPACE "P48BridgeSurfacePoints"
 
@@ -50,6 +51,33 @@ bool FP48PCGBridgeSurfacePointsElement::ExecuteInternal(FPCGContext* Context) co
 		UE_LOG(LogTemp, Warning, TEXT("[P48Surface] Execution aborted: Settings=%d World=%s"), Settings != nullptr, *GetNameSafe(World));
 		return true;
 	}
+
+	FP48PCGBridgeSurfacePointsContext* SurfaceContext = static_cast<FP48PCGBridgeSurfacePointsContext*>(Context);
+	if (World->IsGameWorld())
+	{
+		if (!SurfaceContext->bCollisionWaitStarted)
+		{
+			SurfaceContext->bCollisionWaitStarted = true;
+			SurfaceContext->CollisionWaitStartFrame = GFrameCounter;
+		}
+
+		// Static Mesh Spawner가 새 인스턴스를 만든 프레임이 끝난 뒤에만 충돌을 조회합니다.
+		// 이 대기가 없으면 새 섬 대신 직전 세대의 Physics State를 읽을 수 있습니다.
+		if (GFrameCounter <= SurfaceContext->CollisionWaitStartFrame)
+		{
+			SurfaceContext->bIsPaused = true;
+			FPCGModule::GetPCGModuleChecked().ExecuteNextTick([ContextHandle = SurfaceContext->GetOrCreateHandle()]()
+			{
+				FPCGContext::FSharedContext<FP48PCGBridgeSurfacePointsContext> SharedContext(ContextHandle);
+				if (FP48PCGBridgeSurfacePointsContext* PendingContext = SharedContext.Get())
+				{
+					PendingContext->bIsPaused = false;
+				}
+			});
+			return false;
+		}
+	}
+
 	const int32 Directions = FMath::Clamp(Settings->DirectionCount, 4, 64);
 	const int32 Steps = FMath::Clamp(Settings->RadialSteps, 4, 64);
 	const double MinNormalZ = FMath::Cos(FMath::DegreesToRadians(FMath::Clamp(Settings->MaxSurfaceSlope, 0.0f, 80.0f)));
@@ -69,7 +97,7 @@ bool FP48PCGBridgeSurfacePointsElement::ExecuteInternal(FPCGContext* Context) co
 		UPCGBasePointData* Output = FPCGContext::NewPointData_AnyThread(Context);
 		UPCGMetadata* Metadata = Output->MutableMetadata();
 		auto* Ids = Metadata->CreateAttribute<int32>(P48PCGSpawnAttributeNames::IslandIndex, INDEX_NONE, false, false);
-		auto* Normals = Metadata->CreateAttribute<FVector>(TEXT("SurfaceNormal"), FVector::UpVector, false, false);
+		auto* Normals = Metadata->CreateAttribute<FVector>(P48PCGSpawnAttributeNames::SurfaceNormal, FVector::UpVector, false, false);
 		TArray<FPCGPoint> Points;
 		int32 EmptyIslands = 0;
 		for (int32 Island = 0; Island < Islands->GetNumPoints() && TraceCount < MaxTraces; ++Island)
@@ -83,6 +111,7 @@ bool FP48PCGBridgeSurfacePointsElement::ExecuteInternal(FPCGContext* Context) co
 				continue;
 			}
 			FP48IslandSurfaceTraceStats Stats;
+			FP48IslandSurfaceTraceStats* TraceStats = Settings->bLogDiagnostics ? &Stats : nullptr;
 			int32 EdgeSlopeRejected = 0;
 			int32 InsetSlopeRejected = 0;
 			const FTransform Transform = Islands->GetTransform(Island);
@@ -99,12 +128,12 @@ bool FP48PCGBridgeSurfacePointsElement::ExecuteInternal(FPCGContext* Context) co
 					const double Distance = Radius * Step / Steps;
 					FHitResult Edge;
 					++TraceCount;
-					if (!FP48IslandSurfaceSampler::TraceTop(World, Mesh, Transform, Bounds, Center + Direction * Distance, Edge, &Stats)) { continue; }
+					if (!FP48IslandSurfaceSampler::TraceTop(World, Mesh, Transform, Bounds, Center + Direction * Distance, Edge, TraceStats)) { continue; }
 					if (Edge.ImpactNormal.Z < MinNormalZ) { ++EdgeSlopeRejected; continue; }
 					FHitResult Surface;
 					++TraceCount;
 					const FVector Candidate = Center + Direction * FMath::Max(0.0, Distance - FMath::Max(0.0f, Settings->EdgeInset));
-					if (!FP48IslandSurfaceSampler::TraceTop(World, Mesh, Transform, Bounds, Candidate, Surface, &Stats)) { continue; }
+					if (!FP48IslandSurfaceSampler::TraceTop(World, Mesh, Transform, Bounds, Candidate, Surface, TraceStats)) { continue; }
 					if (Surface.ImpactNormal.Z < MinNormalZ) { ++InsetSlopeRejected; continue; }
 					if (!Accepted.ContainsByPredicate([&Surface](const FVector& P) { return P.Equals(Surface.ImpactPoint, 1.0); }))
 					{

@@ -5,6 +5,85 @@
 
 #include "P48GameStateBase.h"
 #include "../Character/P48PlayerState.h"
+#include "../Maps/PCG/Common/P48PCGNetworkSeedSettings.h"
+#include "../Maps/PCG/Common/P48PCGSeedState.h"
+#include "EngineUtils.h"
+#include "PCGComponent.h"
+#include "PCGGraph.h"
+#include "PCGNode.h"
+
+namespace P48MapReadiness
+{
+	bool RequiresNetworkSeed(const UWorld* World)
+	{
+		if (!World) { return false; }
+		for (TActorIterator<AActor> ActorIt(World); ActorIt; ++ActorIt)
+		{
+			TArray<UPCGComponent*> Components;
+			ActorIt->GetComponents(Components);
+			for (const UPCGComponent* Component : Components)
+			{
+				const UPCGGraph* Graph = Component ? Component->GetGraph() : nullptr;
+				if (!Graph) { continue; }
+				for (const UPCGNode* Node : Graph->GetNodes())
+				{
+					if (Node && Cast<UP48PCGNetworkSeedSettings>(Node->GetSettings())) { return true; }
+				}
+			}
+		}
+		return false;
+	}
+
+	AP48PCGSeedState* FindSeedState(const UWorld* World)
+	{
+		if (!World) { return nullptr; }
+		for (TActorIterator<AP48PCGSeedState> It(World); It; ++It) { return *It; }
+		return nullptr;
+	}
+}
+
+void AP48GameModeBase::HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer)
+{
+	if (!NewPlayer) { return; }
+	if (AP48PCGSeedState* SeedState = P48MapReadiness::FindSeedState(GetWorld())) { SeedState->NotifyControllerJoined(NewPlayer); }
+	if (IsMapReadyForPlayer(NewPlayer))
+	{
+		Super::HandleStartingNewPlayer_Implementation(NewPlayer);
+		return;
+	}
+	PlayersWaitingForMap.AddUnique(NewPlayer);
+	UE_LOG(LogTemp, Display, TEXT("[P48MapReady] Delaying pawn spawn for %s"), *GetNameSafe(NewPlayer));
+}
+
+bool AP48GameModeBase::IsMapReadyForPlayer(const APlayerController* PlayerController) const
+{
+	if (!P48MapReadiness::RequiresNetworkSeed(GetWorld())) { return true; }
+	const AP48PCGSeedState* SeedState = P48MapReadiness::FindSeedState(GetWorld());
+	return SeedState && SeedState->IsMapReady() && SeedState->IsReadyForController(PlayerController);
+}
+
+void AP48GameModeBase::NotifyMapGenerationReadinessChanged()
+{
+	SpawnPlayersWaitingForMap();
+	CheckStartCondition();
+}
+
+void AP48GameModeBase::SpawnPlayersWaitingForMap()
+{
+	for (int32 Index = PlayersWaitingForMap.Num() - 1; Index >= 0; --Index)
+	{
+		APlayerController* PlayerController = PlayersWaitingForMap[Index].Get();
+		if (!PlayerController)
+		{
+			PlayersWaitingForMap.RemoveAtSwap(Index);
+			continue;
+		}
+		if (!IsMapReadyForPlayer(PlayerController)) { continue; }
+		PlayersWaitingForMap.RemoveAtSwap(Index);
+		Super::HandleStartingNewPlayer_Implementation(PlayerController);
+		UE_LOG(LogTemp, Display, TEXT("[P48MapReady] Spawned pawn for %s"), *GetNameSafe(PlayerController));
+	}
+}
 
 
 void AP48GameModeBase::OnPostLogin(AController* NewPlayer)
@@ -44,6 +123,7 @@ void AP48GameModeBase::OnPostLogin(AController* NewPlayer)
 
 void AP48GameModeBase::Logout(AController* Exit)
 {
+	PlayersWaitingForMap.Remove(Cast<APlayerController>(Exit));
     const FString ExitingPlayerName = GetNameSafe(Exit);
     const int32 RemainingPlayerCount = FMath::Max(0, GetNumPlayers() - 1);
 
@@ -118,6 +198,11 @@ void AP48GameModeBase::NotifyPlayerReadyStateChanged()
 
 void AP48GameModeBase::CheckStartCondition()
 {
+	if (P48MapReadiness::RequiresNetworkSeed(GetWorld()))
+	{
+		const AP48PCGSeedState* SeedState = P48MapReadiness::FindSeedState(GetWorld());
+		if (!SeedState || !SeedState->IsMapReady()) { return; }
+	}
 	if (GetNumPlayers() < MinPlayersToStart)
 	{
 		return;

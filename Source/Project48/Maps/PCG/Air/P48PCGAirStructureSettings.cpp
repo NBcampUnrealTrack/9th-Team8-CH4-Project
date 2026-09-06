@@ -1,4 +1,5 @@
 #include "P48PCGAirStructureSettings.h"
+#include "../Common/P48PCGSeedHelpers.h"
 
 #include "../Common/P48PCGSpawnAttributeNames.h"
 #include "Data/PCGPointData.h"
@@ -347,7 +348,7 @@ FText UP48PCGAirStructureSettings::GetNodeTooltipText() const
 
 TArray<FPCGPinProperties> UP48PCGAirStructureSettings::InputPinProperties() const
 {
-	return {};
+	return { FPCGPinProperties(P48PCGSeedNames::InputPin, EPCGDataType::Param) };
 }
 
 TArray<FPCGPinProperties> UP48PCGAirStructureSettings::OutputPinProperties() const
@@ -387,7 +388,7 @@ bool FP48PCGAirStructureElement::ExecuteInternal(FPCGContext* Context) const
 	const FVector2D HalfMapSize = Rules.MapSize.GetAbs() * 0.5f;
 	const float MinHeight = FMath::Min(Rules.HeightRange.X, Rules.HeightRange.Y);
 	const float MaxHeight = FMath::Max(Rules.HeightRange.X, Rules.HeightRange.Y);
-	const int32 BaseSeed = PCGHelpers::ComputeSeed(Rules.RandomSeed, Context->GetSeed());
+	const int32 BaseSeed = PCGHelpers::ComputeSeed(Rules.RandomSeed, P48ReadNetworkSeed(Context));
 	TArray<P48AirStructure::FPlacedEntry> BestLayout;
 
 	for (int32 MapAttempt = 0; MapAttempt < FMath::Max(1, Rules.MaxMapGenerationAttempts); ++MapAttempt)

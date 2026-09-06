@@ -1,6 +1,6 @@
 #include "P48BridgeLoadComponent.h"
 
-#include "Components/StaticMeshComponent.h"
+#include "Components/BoxComponent.h"
 #include "Engine/OverlapResult.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
@@ -10,7 +10,7 @@ UP48BridgeLoadComponent::UP48BridgeLoadComponent()
 	PrimaryComponentTick.bCanEverTick = false;
 }
 
-void UP48BridgeLoadComponent::CalculateStandingLoads(const TArray<TObjectPtr<UStaticMeshComponent>>& Planks, TArray<FP48BridgeLoadValue>& OutLoads) const
+void UP48BridgeLoadComponent::CalculateStandingLoads(const TArray<TObjectPtr<UBoxComponent>>& Planks, TArray<FP48BridgeLoadValue>& OutLoads) const
 {
 	OutLoads.Reset();
 	const UWorld* World = GetWorld();
@@ -19,7 +19,7 @@ void UP48BridgeLoadComponent::CalculateStandingLoads(const TArray<TObjectPtr<USt
 		return;
 	}
 	FBox BridgeBounds(ForceInit);
-	for (const UStaticMeshComponent* Plank : Planks)
+	for (const UBoxComponent* Plank : Planks)
 	{
 		if (IsValid(Plank))
 		{
