@@ -27,6 +27,7 @@ void AP48GameStateBase::GetLifetimeReplicatedProps(
 	DOREPLIFETIME(AP48GameStateBase, CurrentRound);
 	DOREPLIFETIME(AP48GameStateBase, RoundWinner);
 	DOREPLIFETIME(AP48GameStateBase, bRoundDraw);
+	DOREPLIFETIME(AP48GameStateBase, MatchWinner);
 }
 
 void AP48GameStateBase::SetMatchPhase(EP48MatchPhase NewMatchPhase)
@@ -35,6 +36,11 @@ void AP48GameStateBase::SetMatchPhase(EP48MatchPhase NewMatchPhase)
 	{
 		return;
 	}
+	
+	// 서버 Phase전환 확인용 로그입니당.
+	UE_LOG(LogTemp, Warning, TEXT("[Server] MatchPhase: %s -> %s"), 
+		*UEnum::GetValueAsString(MatchPhase),
+		*UEnum::GetValueAsString(NewMatchPhase));
 	
 	MatchPhase = NewMatchPhase;
 }
@@ -106,7 +112,37 @@ void AP48GameStateBase::ResetRoundResult()
 	NotifyRoundResultChanged();
 }
 
+void AP48GameStateBase::SetMatchWinner(AP48PlayerState* NewMatchWinner)
+{
+	if (!HasAuthority() || !IsValid(NewMatchWinner) || MatchWinner == NewMatchWinner)
+	{
+		return;
+	}
 
+	MatchWinner = NewMatchWinner;
+
+	UE_LOG(LogTemp, Warning,
+		TEXT("[Server] Match winner: %s, Wins: %d"),
+		*NewMatchWinner->GetPlayerName(),
+		NewMatchWinner->GetRoundWinCount());
+}
+
+void AP48GameStateBase::ResetMatchResult()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	MatchWinner = nullptr;
+
+	UE_LOG(LogTemp, Log, TEXT("[Server] Match result reset"));
+}
+
+void AP48GameStateBase::OnRep_MatchWinner()
+{
+	UE_LOG(LogTemp, Log, TEXT("[Client] Match winner replicated: %s"), *GetNameSafe(MatchWinner.Get()));
+}
 
 bool AP48GameStateBase::HasRoundResult() const
 {
