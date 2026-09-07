@@ -16,11 +16,11 @@ public:
 	int32 SaveVersion;
 	
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, SaveGame, Category = "SaveGame|Player")
-	FString Nickname = TEXT("Player");
+	FString Nickname;
 	
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, SaveGame, Category = "SaveGame|Player")
-	int32 PlayerLevel = 1;
+	int32 PlayerLevel;
 	
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, SaveGame, Category = "SaveGame|Player")
-	int32 Experience = 0;
+	int32 Experience;
 };

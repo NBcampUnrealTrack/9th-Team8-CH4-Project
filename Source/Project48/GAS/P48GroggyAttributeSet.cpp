@@ -42,14 +42,17 @@ void UP48GroggyAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModC
 {
 	Super::PostGameplayEffectExecute(Data);
 	
-	if (Data.EvaluatedData.Attribute == GetGroggyAttribute())
-	{
-		SetGroggy(FMath::Clamp(GetGroggy(), 0.0f, GetMaxGroggy()));
-	}
-	else if (Data.EvaluatedData.Attribute == GetMaxGroggyAttribute())
+	const FGameplayAttribute& ModifiedAttribute =
+		Data.EvaluatedData.Attribute;
+	
+	if (ModifiedAttribute == GetMaxGroggyAttribute())
 	{
 		SetMaxGroggy(FMath::Max(GetMaxGroggy(), 1.0f));
-		
+	}
+	
+	if (ModifiedAttribute == GetGroggyAttribute() ||
+		ModifiedAttribute == GetMaxGroggyAttribute())
+	{
 		SetGroggy(FMath::Clamp(GetGroggy(), 0.0f, GetMaxGroggy()));
 	}
 }

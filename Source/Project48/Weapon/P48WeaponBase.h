@@ -21,7 +21,7 @@ public:
 	virtual void OnConstruction(const FTransform& Transform) override;
 	
 	UFUNCTION(BlueprintPure, Category = "Weapon|Data")
-	bool HasvalidWeaponData() const;
+	bool HasValidWeaponData() const;
 	
 	UFUNCTION(BlueprintPure, Category = "Weapon|Data")
 	FWeaponDataRow GetWeaponData() const;
