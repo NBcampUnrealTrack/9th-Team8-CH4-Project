@@ -2,6 +2,7 @@
 
 
 #include "P48GameModeBase.h"
+#include "TimerManager.h"
 
 #include "P48GameStateBase.h"
 #include "../Character/P48PlayerState.h"
@@ -115,8 +116,6 @@ void AP48GameModeBase::OnPostLogin(AController* NewPlayer)
 
 		return;
 	}
-	// Ready 연동 전, 서버 흐름 확인용 임시 코드입니다! 추후 삭제 예정.
-	// P48PlayerState->SetReady(true);
 	
 	CheckStartCondition();
 }
@@ -168,10 +167,9 @@ void AP48GameModeBase::Logout(AController* Exit)
     UE_LOG(LogTemp,Warning,TEXT("Remaining Match Participants: %d"),RemainingParticipantCount);
 
     if (IsValid(P48GameState) == true
-        && !P48GameState->IsTiebreaker()
         && P48GameState->MatchPhase == EP48MatchPhase::Countdown
         && bWasMatchParticipant == true
-        && RemainingParticipantCount < MinPlayersToStart)
+        && ShouldCancelCountdown(RemainingParticipantCount))
     {
         GetWorldTimerManager().ClearTimer(CountdownTimerHandle);
         P48GameState->SetMatchPhase(EP48MatchPhase::Waiting);
@@ -199,6 +197,11 @@ void AP48GameModeBase::NotifyPlayerReadyStateChanged()
 
 void AP48GameModeBase::CheckStartCondition()
 {
+	if (!HasAuthority())
+	{
+		return;
+	}
+
 	if (P48MapReadiness::RequiresNetworkSeed(GetWorld()))
 	{
 		const AP48PCGSeedState* SeedState = P48MapReadiness::FindSeedState(GetWorld());
@@ -220,17 +223,21 @@ void AP48GameModeBase::CheckStartCondition()
 		return;
 	}
 	
+	// 로비에서 레디 확인을 완료하므로 게임맵의 중복 레디 검사는 사용하지 않음
+	// 예정 인원 전원 도착 여부는 로비 이동 흐름과 별도 연동 필요
+	/*
 	if (AreAllPlayersReady() == false)
 	{
 		UE_LOG(LogTemp,Warning,TEXT("[Server] Waiting for all players to be ready"));
 
 		return;
 	}
+	*/
 	
 	P48GameState->ResetMatchResult();
 	ConfirmMatchParticipants();
 
-	UE_LOG(LogTemp,Warning,TEXT("[Server] Start condition met: %d/%d, All players ready"),GetNumPlayers(),MinPlayersToStart);
+	UE_LOG(LogTemp,Warning,TEXT("[Server] Start condition met: %d/%d"),GetNumPlayers(),MinPlayersToStart);
 	StartCountdown();
 }
 
@@ -331,20 +338,15 @@ void AP48GameModeBase::StartMatch()
 	
 	UE_LOG(LogTemp,Warning,TEXT("[Server] Round %d started"),P48GameState->CurrentRound);
 	
-	// 라운드 전환 확인용 임시 코드입니다. 주석처리했음! 나중에 확인할때 열어주쎄요~
-	/*
-	FTimerHandle TestRoundTimerHandle;
-	GetWorldTimerManager().SetTimer(
-	   TestRoundTimerHandle,
-	   this,
-	   &ThisClass::StartRoundEnd,
-	   5.0f,
-	   false);
-	*/
 }
 
 void AP48GameModeBase::StartRoundEnd()
 {
+	if (!HasAuthority())
+	{
+		return;
+	}
+
 	AP48GameStateBase* P48GameState = GetGameState<AP48GameStateBase>();
 	if (IsValid(P48GameState) == false)
 	{
@@ -370,6 +372,11 @@ void AP48GameModeBase::StartRoundEnd()
 
 void AP48GameModeBase::PrepareNextRound()
 {
+	if (!HasAuthority())
+	{
+		return;
+	}
+
 	AP48GameStateBase* P48GameState = GetGameState<AP48GameStateBase>();
 	if (IsValid(P48GameState) == false)
 	{
@@ -381,8 +388,8 @@ void AP48GameModeBase::PrepareNextRound()
 		return;
 	}
 	
-	// 결정전과 재경기는 일반 라운드 번호에 포함하지 않는다.
-	if (!P48GameState->IsTiebreaker())
+	// 라운드 번호 증가 정책은 진행 규칙에 위임
+	if (ShouldAdvanceRound())
 	{
 		P48GameState->SetCurrentRound(P48GameState->CurrentRound + 1);
 	}
@@ -390,4 +397,21 @@ void AP48GameModeBase::PrepareNextRound()
 	UE_LOG(LogTemp,Warning,TEXT("[Server] Preparing Round %d"),P48GameState->CurrentRound);
 	
 	StartCountdown();
+}
+
+bool AP48GameModeBase::ShouldCancelCountdown(int32 RemainingParticipants) const
+{
+	return RemainingParticipants < MinPlayersToStart;
+}
+
+void AP48GameModeBase::ClearMatchTimers()
+{
+	GetWorldTimerManager().ClearTimer(CountdownTimerHandle);
+	GetWorldTimerManager().ClearTimer(RoundEndTimerHandle);
+}
+
+void AP48GameModeBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	ClearMatchTimers();
+	Super::EndPlay(EndPlayReason);
 }
