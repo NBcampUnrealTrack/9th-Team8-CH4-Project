@@ -1,4 +1,6 @@
 #include "P48PCGAirStructureSettings.h"
+
+#include "PCGComponent.h"
 #include "../Common/P48PCGSeedHelpers.h"
 
 #include "../Common/P48PCGSpawnAttributeNames.h"
@@ -268,6 +270,7 @@ namespace P48AirStructure
 		FPCGMetadataAttribute<FSoftObjectPath>* MeshAttribute = Type == ESpawnType::StaticMesh ? Metadata->CreateAttribute<FSoftObjectPath>(P48PCGSpawnAttributeNames::Mesh, FSoftObjectPath(), false, false) : nullptr;
 		FPCGMetadataAttribute<FSoftClassPath>* ActorClassAttribute = Type == ESpawnType::Actor ? Metadata->CreateAttribute<FSoftClassPath>(P48PCGSpawnAttributeNames::ActorClass, FSoftClassPath(), false, false) : nullptr;
 		FPCGMetadataAttribute<int32>* IslandIndexAttribute = Metadata->CreateAttribute<int32>(P48PCGSpawnAttributeNames::IslandIndex, INDEX_NONE, false, false);
+		FPCGMetadataAttribute<bool>* PlayerAttribute = Type == ESpawnType::StaticMesh ? Metadata->CreateAttribute<bool>(P48PCGSpawnAttributeNames::CanSpawnPlayer, false, false, false) : nullptr;
 
 		FPCGPointValueRanges Ranges(PointData, false);
 		for (int32 PointIndex = 0; PointIndex < Matching.Num(); ++PointIndex)
@@ -290,6 +293,10 @@ namespace P48AirStructure
 				ActorClassAttribute->SetValue(Point.MetadataEntry, FSoftClassPath(Item.Entry->ActorClass.Get()));
 			}
 			IslandIndexAttribute->SetValue(Point.MetadataEntry, Item.IslandIndex);
+			if (PlayerAttribute)
+			{
+				PlayerAttribute->SetValue(Point.MetadataEntry, Item.Entry->bCanSpawnPlayer);
+			}
 			Ranges.SetFromPoint(PointIndex, Point);
 		}
 
@@ -482,8 +489,16 @@ bool FP48PCGAirStructureElement::ExecuteInternal(FPCGContext* Context) const
 		Output.Pin = Pin;
 	};
 
+	UWorld* World = Context->ExecutionSource.IsValid() ? Context->ExecutionSource->GetExecutionState().GetWorld() : nullptr;
+	const bool bClient = World && World->GetNetMode() == NM_Client;
+
 	AddOutput(P48AirStructure::CreatePointData(Context, BestLayout, P48AirStructure::ESpawnType::StaticMesh, SourceTransform), UP48PCGAirStructureSettings::StaticMeshOutputLabel);
-	AddOutput(P48AirStructure::CreatePointData(Context, BestLayout, P48AirStructure::ESpawnType::Actor, SourceTransform), UP48PCGAirStructureSettings::ActorOutputLabel);
+
+	if (!bClient)
+	{
+		AddOutput(P48AirStructure::CreatePointData(Context, BestLayout, P48AirStructure::ESpawnType::Actor, SourceTransform), UP48PCGAirStructureSettings::ActorOutputLabel);
+	}
+
 	AddOutput(P48AirStructure::CreateAnchorData(Context, BestLayout, SourceTransform), UP48PCGAirStructureSettings::AnchorOutputLabel);
 	return true;
 }

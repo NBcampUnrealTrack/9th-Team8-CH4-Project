@@ -7,6 +7,7 @@
 #include "TimerManager.h"
 #include "Project48/Character/P48PlayerController.h"
 #include "Project48/Game/P48GameModeBase.h"
+#include "../../Objects/Spawn/P48PlayerStart.h"
 
 AP48PCGSeedState::AP48PCGSeedState()
 {
@@ -30,9 +31,75 @@ void AP48PCGSeedState::SetMapSeed(int32 Seed)
 	State.Revision = State.Revision == MAX_int32 ? 1 : State.Revision + 1;
 	State.bMapReady = false;
 	bServerGenerationComplete = false;
+	bPlayerStartLayoutRequired = true;
+	bPlayerStartLayoutValid = false;
+	bPlayerStartTimeoutLogged = false;
+	RequestedPlayerStartCount = 0;
+	SelectedPlayerStartCount = 0;
+	PlayerStartRegistrationDeadline = 0.0;
+	RegisteredPlayerStarts.Reset();
 	ReadyControllers.Reset();
 	ForceNetUpdate();
 	UE_LOG(LogTemp, Display, TEXT("[P48NetworkSeed] Server Seed=%d Revision=%d"), State.Seed, State.Revision);
+}
+
+void AP48PCGSeedState::ReportPlayerStartLayout(const int32 RequestedCount, const int32 SelectedCount)
+{
+	if (!HasAuthority() || State.Revision == 0)
+	{
+		return;
+	}
+	bPlayerStartLayoutRequired = true;
+	RequestedPlayerStartCount = FMath::Max(0, RequestedCount);
+	SelectedPlayerStartCount = FMath::Max(0, SelectedCount);
+	bPlayerStartLayoutValid = false;
+	bPlayerStartTimeoutLogged = false;
+	PlayerStartRegistrationDeadline = 0.0;
+	RefreshPlayerStartReadiness();
+	UE_LOG(LogTemp, Display, TEXT("[P48PlayerStartLayout] Revision=%d Requested=%d Selected=%d Registered=%d"), State.Revision, RequestedPlayerStartCount, SelectedPlayerStartCount, GetRegisteredPlayerStartCount());
+}
+
+void AP48PCGSeedState::RegisterGeneratedPlayerStart(AP48PlayerStart* PlayerStart)
+{
+	if (!HasAuthority() || !IsValid(PlayerStart) || State.Revision <= 0)
+	{
+		return;
+	}
+
+	TSet<int32> UsedSlots;
+	for (const TWeakObjectPtr<AP48PlayerStart>& ExistingPlayerStart : RegisteredPlayerStarts)
+	{
+		if (const AP48PlayerStart* Existing = ExistingPlayerStart.Get(); Existing && Existing != PlayerStart && Existing->GenerationId == State.Revision && Existing->SpawnSlotIndex != INDEX_NONE)
+		{
+			UsedSlots.Add(Existing->SpawnSlotIndex);
+		}
+	}
+
+	if (PlayerStart->SpawnSlotIndex == INDEX_NONE || UsedSlots.Contains(PlayerStart->SpawnSlotIndex))
+	{
+		int32 AvailableSlot = 0;
+		while (UsedSlots.Contains(AvailableSlot))
+		{
+			++AvailableSlot;
+		}
+		PlayerStart->SpawnSlotIndex = AvailableSlot;
+	}
+
+	PlayerStart->GenerationId = State.Revision;
+	RegisteredPlayerStarts.Add(PlayerStart);
+	RefreshPlayerStartReadiness();
+	UE_LOG(LogTemp, Display, TEXT("[P48PlayerStartRegister] Revision=%d Name=%s Slot=%d Island=%d Registered=%d/%d"), State.Revision, *GetNameSafe(PlayerStart), PlayerStart->SpawnSlotIndex, PlayerStart->IslandIndex, GetRegisteredPlayerStartCount(), RequestedPlayerStartCount);
+}
+
+void AP48PCGSeedState::UnregisterGeneratedPlayerStart(AP48PlayerStart* PlayerStart)
+{
+	if (!HasAuthority() || !PlayerStart)
+	{
+		return;
+	}
+
+	RegisteredPlayerStarts.Remove(PlayerStart);
+	RefreshPlayerStartReadiness();
 }
 
 void AP48PCGSeedState::RegisterConsumer(UPCGComponent* Component)
@@ -56,7 +123,8 @@ void AP48PCGSeedState::HandleGraphGenerated(UPCGComponent* Component)
 	if (HasAuthority())
 	{
 		bServerGenerationComplete = true;
-		UpdateMapReady();
+		PlayerStartRegistrationDeadline = GetWorld()->GetTimeSeconds() + 1.0;
+		RefreshPlayerStartReadiness();
 		return;
 	}
 	if (LastReportedRevision == State.Revision) { return; }
@@ -69,6 +137,43 @@ void AP48PCGSeedState::HandleGraphGenerated(UPCGComponent* Component)
 			break;
 		}
 	}
+}
+
+int32 AP48PCGSeedState::GetRegisteredPlayerStartCount() const
+{
+	TSet<int32> SpawnSlots;
+	for (const TWeakObjectPtr<AP48PlayerStart>& RegisteredPlayerStart : RegisteredPlayerStarts)
+	{
+		const AP48PlayerStart* PlayerStart = RegisteredPlayerStart.Get();
+		if (PlayerStart && PlayerStart->GenerationId == State.Revision && PlayerStart->SpawnSlotIndex != INDEX_NONE)
+		{
+			SpawnSlots.Add(PlayerStart->SpawnSlotIndex);
+		}
+	}
+	return SpawnSlots.Num();
+}
+
+void AP48PCGSeedState::RefreshPlayerStartReadiness()
+
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	const int32 RegisteredCount = GetRegisteredPlayerStartCount();
+	const bool bWasValid = bPlayerStartLayoutValid;
+	bPlayerStartLayoutValid = bPlayerStartLayoutRequired &&
+		RequestedPlayerStartCount > 0 &&
+		SelectedPlayerStartCount >= RequestedPlayerStartCount &&
+		RegisteredCount >= RequestedPlayerStartCount;
+
+	if (!bWasValid && bPlayerStartLayoutValid)
+	{
+		UE_LOG(LogTemp, Display, TEXT("[P48PlayerStartReady] Revision=%d Registered=%d/%d"), State.Revision, RegisteredCount, RequestedPlayerStartCount);
+	}
+
+	UpdateMapReady();
 }
 
 bool AP48PCGSeedState::IsLocalGenerationComplete() const
@@ -109,7 +214,7 @@ bool AP48PCGSeedState::IsReadyForController(const APlayerController* PlayerContr
 void AP48PCGSeedState::UpdateMapReady()
 {
 	if (!HasAuthority()) { return; }
-	bool bReady = bServerGenerationComplete;
+	bool bReady = bServerGenerationComplete && (!bPlayerStartLayoutRequired || bPlayerStartLayoutValid);
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); bReady && It; ++It)
 	{
 		bReady = IsReadyForController(It->Get());
@@ -124,6 +229,13 @@ void AP48PCGSeedState::UpdateMapReady()
 void AP48PCGSeedState::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+	for (auto It = RegisteredPlayerStarts.CreateIterator(); It; ++It)
+	{
+		if (!It->IsValid())
+		{
+			It.RemoveCurrent();
+		}
+	}
 	for (auto It = Consumers.CreateIterator(); It; ++It)
 	{
 		UPCGComponent* Component = It.Key().Get();
@@ -141,7 +253,26 @@ void AP48PCGSeedState::Tick(float DeltaSeconds)
 		bConsumerGenerationScheduled = true;
 		GetWorldTimerManager().SetTimerForNextTick(this, &ThisClass::GeneratePendingConsumers);
 	}
-	if (HasAuthority()) { UpdateMapReady(); }
+	if (HasAuthority())
+	{
+		RefreshPlayerStartReadiness();
+		if (bServerGenerationComplete && bPlayerStartLayoutRequired && !bPlayerStartLayoutValid && !bPlayerStartTimeoutLogged && PlayerStartRegistrationDeadline > 0.0 && GetWorld()->GetTimeSeconds() >= PlayerStartRegistrationDeadline)
+		{
+			bPlayerStartTimeoutLogged = true;
+			if (RequestedPlayerStartCount <= 0)
+			{
+				UE_LOG(LogTemp, Error, TEXT("[P48PlayerStartReady] Revision=%d did not receive a PlayerStart layout. Connect the Player Spawn Selector after the map generation barrier."), State.Revision);
+			}
+			else if (SelectedPlayerStartCount < RequestedPlayerStartCount)
+			{
+				UE_LOG(LogTemp, Error, TEXT("[P48PlayerStartReady] Revision=%d selected only %d of %d required PlayerStart candidates. Adjust safe-surface or spawn-distance settings."), State.Revision, SelectedPlayerStartCount, RequestedPlayerStartCount);
+			}
+			else
+			{
+				UE_LOG(LogTemp, Error, TEXT("[P48PlayerStartReady] Revision=%d registered %d of %d required PlayerStarts after the registration timeout. Verify that Spawn Actor uses P48PlayerStart."), State.Revision, GetRegisteredPlayerStartCount(), RequestedPlayerStartCount);
+			}
+		}
+	}
 }
 
 void AP48PCGSeedState::GeneratePendingConsumers()

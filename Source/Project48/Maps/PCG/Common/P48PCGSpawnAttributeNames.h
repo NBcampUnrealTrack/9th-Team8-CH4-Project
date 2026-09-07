@@ -9,8 +9,12 @@ namespace P48PCGSpawnAttributeNames
 	inline const FName ActorClass(TEXT("ActorClass"));
 	inline const FName IslandIndex(TEXT("IslandIndex"));
 	inline const FName SurfaceNormal(TEXT("SurfaceNormal"));
+	inline const FName SurfaceOutward(TEXT("SurfaceOutward"));
 	inline const FName PlacementRadius(TEXT("PlacementRadius"));
 	inline const FName CanSpawnPlayer(TEXT("CanSpawnPlayer"));
+	inline const FName SurfaceLocation(TEXT("SurfaceLocation"));
+	inline const FName SpawnSlotIndex(TEXT("SpawnSlotIndex"));
+	inline const FName GenerationId(TEXT("GenerationId"));
 	inline const FName StartLocation(TEXT("StartLocation"));
 	inline const FName EndLocation(TEXT("EndLocation"));
 }

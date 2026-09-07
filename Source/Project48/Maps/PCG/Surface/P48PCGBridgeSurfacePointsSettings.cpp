@@ -20,7 +20,7 @@ FText UP48PCGBridgeSurfacePointsSettings::GetDefaultNodeTitle() const
 
 FText UP48PCGBridgeSurfacePointsSettings::GetNodeTooltipText() const
 {
-	return LOCTEXT("Tooltip", "Debug-only bridge entrance candidates on spawned static-mesh islands. Connect Static Mesh Spawner Out to In. Requires query collision and Mesh / IslandIndex attributes. Does not spawn bridges or choose MST edges.");
+	return LOCTEXT("Tooltip", "Finds precise bridge entrance candidates on spawned static-mesh islands. Connect Static Mesh Spawner Out to In. Outputs IslandIndex, SurfaceNormal and SurfaceOutward attributes.");
 }
 #endif
 
@@ -80,6 +80,7 @@ bool FP48PCGBridgeSurfacePointsElement::ExecuteInternal(FPCGContext* Context) co
 
 	const int32 Directions = FMath::Clamp(Settings->DirectionCount, 4, 64);
 	const int32 Steps = FMath::Clamp(Settings->RadialSteps, 4, 64);
+	const int32 RefinementSteps = FMath::Clamp(Settings->EdgeRefinementSteps, 3, 12);
 	const double MinNormalZ = FMath::Cos(FMath::DegreesToRadians(FMath::Clamp(Settings->MaxSurfaceSlope, 0.0f, 80.0f)));
 	int32 TraceCount = 0;
 	constexpr int32 MaxTraces = 32768;
@@ -98,6 +99,7 @@ bool FP48PCGBridgeSurfacePointsElement::ExecuteInternal(FPCGContext* Context) co
 		UPCGMetadata* Metadata = Output->MutableMetadata();
 		auto* Ids = Metadata->CreateAttribute<int32>(P48PCGSpawnAttributeNames::IslandIndex, INDEX_NONE, false, false);
 		auto* Normals = Metadata->CreateAttribute<FVector>(P48PCGSpawnAttributeNames::SurfaceNormal, FVector::UpVector, false, false);
+		auto* Outwards = Metadata->CreateAttribute<FVector>(P48PCGSpawnAttributeNames::SurfaceOutward, FVector::ForwardVector, false, false);
 		TArray<FPCGPoint> Points;
 		int32 EmptyIslands = 0;
 		for (int32 Island = 0; Island < Islands->GetNumPoints() && TraceCount < MaxTraces; ++Island)
@@ -123,18 +125,57 @@ bool FP48PCGBridgeSurfacePointsElement::ExecuteInternal(FPCGContext* Context) co
 			{
 				const double Angle = 2.0 * PI * DirectionIndex / Directions;
 				const FVector Direction(FMath::Cos(Angle), FMath::Sin(Angle), 0.0);
-				for (int32 Step = Steps; Step >= 1 && TraceCount + 2 <= MaxTraces; --Step)
+				double OutsideDistance = Radius;
+				double InsideDistance = 0.0;
+				bool bFoundInside = false;
+				for (int32 Step = Steps; Step >= 0 && TraceCount < MaxTraces; --Step)
 				{
 					const double Distance = Radius * Step / Steps;
-					FHitResult Edge;
+					FHitResult Hit;
 					++TraceCount;
-					if (!FP48IslandSurfaceSampler::TraceTop(World, Mesh, Transform, Bounds, Center + Direction * Distance, Edge, TraceStats)) { continue; }
-					if (Edge.ImpactNormal.Z < MinNormalZ) { ++EdgeSlopeRejected; continue; }
-					FHitResult Surface;
+					if (!FP48IslandSurfaceSampler::TraceTop(World, Mesh, Transform, Bounds, Center + Direction * Distance, Hit, TraceStats))
+					{
+						OutsideDistance = Distance;
+						continue;
+					}
+					if (Hit.ImpactNormal.Z < MinNormalZ)
+					{
+						++EdgeSlopeRejected;
+						OutsideDistance = Distance;
+						continue;
+					}
+					InsideDistance = Distance;
+					bFoundInside = true;
+					break;
+				}
+				if (!bFoundInside)
+				{
+					continue;
+				}
+
+				// 바깥의 miss와 안쪽의 hit 사이를 정밀화합니다. 큰 섬에서도 RadialSteps 오차가 누적되지 않습니다.
+				for (int32 Refinement = 0; Refinement < RefinementSteps && TraceCount < MaxTraces; ++Refinement)
+				{
+					const double MidDistance = (OutsideDistance + InsideDistance) * 0.5;
+					FHitResult MidHit;
 					++TraceCount;
-					const FVector Candidate = Center + Direction * FMath::Max(0.0, Distance - FMath::Max(0.0f, Settings->EdgeInset));
-					if (!FP48IslandSurfaceSampler::TraceTop(World, Mesh, Transform, Bounds, Candidate, Surface, TraceStats)) { continue; }
-					if (Surface.ImpactNormal.Z < MinNormalZ) { ++InsetSlopeRejected; continue; }
+					if (FP48IslandSurfaceSampler::TraceTop(World, Mesh, Transform, Bounds, Center + Direction * MidDistance, MidHit, TraceStats) && MidHit.ImpactNormal.Z >= MinNormalZ)
+					{
+						InsideDistance = MidDistance;
+					}
+					else
+					{
+						OutsideDistance = MidDistance;
+					}
+				}
+
+				FHitResult Surface;
+				++TraceCount;
+				const double MaxSafeInset = InsideDistance * 0.25;
+				const double SafeInset = FMath::Min<double>(FMath::Max(0.0f, Settings->EdgeInset), MaxSafeInset);
+				const FVector Candidate = Center + Direction * (InsideDistance - SafeInset);
+				if (!FP48IslandSurfaceSampler::TraceTop(World, Mesh, Transform, Bounds, Candidate, Surface, TraceStats)) { continue; }
+				if (Surface.ImpactNormal.Z < MinNormalZ) { ++InsetSlopeRejected; continue; }
 					if (!Accepted.ContainsByPredicate([&Surface](const FVector& P) { return P.Equals(Surface.ImpactPoint, 1.0); }))
 					{
 						Accepted.Add(Surface.ImpactPoint);
@@ -147,9 +188,8 @@ bool FP48PCGBridgeSurfacePointsElement::ExecuteInternal(FPCGContext* Context) co
 						Point.MetadataEntry = Metadata->AddEntry();
 						Ids->SetValue(Point.MetadataEntry, IslandAttribute->GetValueFromItemKey(Entry));
 						Normals->SetValue(Point.MetadataEntry, Surface.ImpactNormal);
+						Outwards->SetValue(Point.MetadataEntry, Direction);
 					}
-					break;
-				}
 			}
 			if (Accepted.IsEmpty()) { ++EmptyIslands; }
 			if (Settings->bLogDiagnostics)
@@ -168,7 +208,14 @@ bool FP48PCGBridgeSurfacePointsElement::ExecuteInternal(FPCGContext* Context) co
 		Tagged.Tags = Input.Tags;
 		if (EmptyIslands > 0)
 		{
-			PCGE_LOG(Warning, GraphAndLog, LOCTEXT("NoSurface", "Some islands have no surface candidates. Check spawn order, query collision (WorldStatic/WorldDynamic), slope limit and EdgeInset. Visual displacement is not collision geometry."));
+			if (Points.IsEmpty())
+			{
+				PCGE_LOG(Error, GraphAndLog, LOCTEXT("NoSurface", "No island surface candidates were found. Check spawn order, query collision, slope limit and EdgeInset."));
+			}
+			else if (Settings->bLogDiagnostics)
+			{
+				UE_LOG(LogTemp, Display, TEXT("[P48Surface] %d island(s) were skipped because they have no valid walkable edge. Valid islands continue without a graph warning."), EmptyIslands);
+			}
 		}
 	}
 	if (TraceCount + 2 > MaxTraces)
