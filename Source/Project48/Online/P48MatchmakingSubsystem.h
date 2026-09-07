@@ -64,6 +64,11 @@ public:
 	bool FindSessions(int32 MaxSearchResults = 100, bool bIsLANQuery = true);
 
 	UFUNCTION(BlueprintCallable, Category = "Online|Session")
+	bool FindAndJoinFirstSession(
+		int32 MaxSearchResults = 100,
+		bool bIsLANQuery = true);
+
+	UFUNCTION(BlueprintCallable, Category = "Online|Session")
 	bool JoinSession(int32 SearchResultIndex);
 
 	UFUNCTION(BlueprintCallable, Category = "Online|Session")
@@ -100,4 +105,5 @@ private:
 	FDelegateHandle DestroySessionCompleteDelegateHandle;
 	FDelegateHandle FindSessionsCompleteDelegateHandle;
 	FDelegateHandle JoinSessionCompleteDelegateHandle;
+	bool bJoinFirstResultAfterSearch = false;
 };

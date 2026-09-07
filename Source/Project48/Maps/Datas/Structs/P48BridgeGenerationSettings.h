@@ -11,10 +11,16 @@ struct PROJECT48_API FP48BridgeGenerationSettings
 {
 	GENERATED_BODY()
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Bridge") TArray<FP48WeightedBridgeStaticMesh> StaticMeshes;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Bridge") TArray<FP48WeightedBridgeActor> ActorClasses;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Bridge") FP48BridgeConnectionRules ConnectionRules;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Bridge", meta = (ClampMin = "0.0", Units = "cm")) float AnchorInset = 100.0f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Bridge", meta = (ClampMin = "0.0", ClampMax = "1.0")) float AdditionalBridgeChance = 0.0f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Bridge") int32 RandomSeed = 54321;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Bridge")
+	TArray<FP48WeightedBridgeStaticMesh> StaticMeshes;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Bridge")
+	TArray<FP48WeightedBridgeActor> ActorClasses;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Bridge")
+	FP48BridgeConnectionRules ConnectionRules;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Bridge", meta = (ClampMin = "0.0", Units = "cm"))
+	float AnchorInset = 100.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Bridge", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float AdditionalBridgeChance = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Bridge")
+	int32 RandomSeed = 54321;
 };
