@@ -9,9 +9,11 @@
 #include "GameplayEffect.h"
 #include "GameplayTagContainer.h"
 
+DEFINE_LOG_CATEGORY_STATIC(LogP48Weapon, Log, All);
+
 AP48WeaponBase::AP48WeaponBase()
 {
-	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bCanEverTick = false;
 	
 	bReplicates = true;
 	SetReplicateMovement(true);
@@ -62,7 +64,11 @@ void AP48WeaponBase::BeginPlay()
 {
 	Super::BeginPlay();
 	
-	ApplyWeaponData();
+	// Construction 단계에서 적용되지 않은 경우에만 다시 시도
+	if (!bHasValidWeaponData)
+	{
+		ApplyWeaponData();
+	}
 }
 
 void AP48WeaponBase::ApplyWeaponData()
@@ -72,11 +78,13 @@ void AP48WeaponBase::ApplyWeaponData()
 	
 	if (!WeaponDataHandle.DataTable)
 	{
+		UE_LOG(LogP48Weapon, Error, TEXT("%s: Weapon DataTable이 설정되지 않았습니다."), *GetName());
 		return;
 	}
 	
 	if (WeaponDataHandle.RowName.IsNone())
 	{
+		UE_LOG(LogP48Weapon, Error, TEXT("%s: Weapon DataTable Row가 설정되지 않았습니다."), *GetName());
 		return;
 	}
 	
@@ -88,7 +96,7 @@ void AP48WeaponBase::ApplyWeaponData()
 	if (!FoundData)
 	{
 		UE_LOG(
-			LogTemp,
+			LogP48Weapon,
 			Error,
 			TEXT("%s: Weapon Data를 찾지 못했습니다. Row: %s"),
 			*GetName(),
@@ -98,9 +106,26 @@ void AP48WeaponBase::ApplyWeaponData()
 		return;
 	}
 	
-	CachedWeaponData = *FoundData;
-	bHasValidWeaponData = true;
+	if (!FoundData->HasValidBalanceData())
+	{
+		UE_LOG(
+			LogP48Weapon,
+			Error,
+			TEXT("%s: Weapon 수치 데이터가 올바르지 않습니다. "
+				"Row=%s, GroggyDamage=%.1f, KnockbackPower=%.1f, "
+				"AttackCooldown=%.1f, Weight=%.1f"),
+				*GetName(),
+				*WeaponDataHandle.RowName.ToString(),
+				FoundData->GroggyDamage,
+				FoundData->KnockbackPower,
+				FoundData->AttackCooldown,
+				FoundData->Weight);
+		
+		return;
+	}
 	
+	CachedWeaponData = *FoundData;
+		
 	UStaticMesh* LoadedMesh = CachedWeaponData.WeaponMesh.LoadSynchronous();
 	
 	if (LoadedMesh)
@@ -112,13 +137,14 @@ void AP48WeaponBase::ApplyWeaponData()
 		WeaponMeshComponent->SetMassOverrideInKg(
 			NAME_None,
 			SafeWeight,
-			true
-			);
+			true);
+			
+		bHasValidWeaponData = true;
 	}
 	else
 	{
 		UE_LOG(
-			LogTemp,
+			LogP48Weapon,
 			Warning,
 			TEXT("%s: Weapon Mesh가 비어 있습니다. Row: %s"),
 			*GetName(),
@@ -127,7 +153,7 @@ void AP48WeaponBase::ApplyWeaponData()
 	}
 }
 
-bool AP48WeaponBase::HasvalidWeaponData() const
+bool AP48WeaponBase::HasValidWeaponData() const
 {
 	return bHasValidWeaponData;
 }
@@ -159,7 +185,7 @@ void AP48WeaponBase::StartAttackDetection()
 	
 	AttackCollisionComponent->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	
-	UE_LOG(LogTemp, Log, TEXT("%s 무기 공격 판정 시작"), *GetName());
+	UE_LOG(LogP48Weapon, Log, TEXT("%s 무기 공격 판정 시작"), *GetName());
 }
 
 void AP48WeaponBase::StopAttackDetection()
@@ -178,7 +204,7 @@ void AP48WeaponBase::StopAttackDetection()
 	
 	AttackCollisionComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	
-	UE_LOG(LogTemp, Log, TEXT("%s 무기 공격 판정 종료"), *GetName());
+	UE_LOG(LogP48Weapon, Log, TEXT("%s 무기 공격 판정 종료"), *GetName());
 }
 
 void AP48WeaponBase::OnAttackCollisionBeginOverlap(
@@ -215,7 +241,7 @@ void AP48WeaponBase::OnAttackCollisionBeginOverlap(
 	
 	HandleWeaponHit(OtherActor);
 	
-	UE_LOG(LogTemp, Log, TEXT("%s: 공격 대상 감지 [%s]"), *GetName(), *OtherActor->GetName());
+	UE_LOG(LogP48Weapon, Log, TEXT("%s: 공격 대상 감지 [%s]"), *GetName(), *OtherActor->GetName());
 }
 
 void AP48WeaponBase::HandleWeaponHit(AActor* HitActor)
@@ -235,14 +261,14 @@ void AP48WeaponBase::HandleWeaponHit(AActor* HitActor)
 	// 무기 DT와 그로기 GE 설정 검증
 	if (!bHasValidWeaponData)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("%s: 유효한 무기가 없어 피격을 처리할 수 없습니다."), *GetName());
+		UE_LOG(LogP48Weapon, Warning, TEXT("%s: 유효한 무기가 없어 피격을 처리할 수 없습니다."), *GetName());
 		
 		return;
 	}
 	
 	if (!GroggyDamageEffectClass)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("%s GroggyDamageEffectClass가 설정되지 않았습니다."), *GetName());
+		UE_LOG(LogP48Weapon, Warning, TEXT("%s GroggyDamageEffectClass가 설정되지 않았습니다."), *GetName());
 		
 		return;
 	}
@@ -254,7 +280,7 @@ void AP48WeaponBase::HandleWeaponHit(AActor* HitActor)
 	if (!TargetASC)
 	{
 		UE_LOG(
-			LogTemp,
+			LogP48Weapon,
 			Verbose,
 			TEXT("%s: 대상 %s에 ASC가 없어 피격을 무시합니다."),
 			*GetName(),
@@ -269,7 +295,7 @@ void AP48WeaponBase::HandleWeaponHit(AActor* HitActor)
 	const float KnockbackPower = FMath::Max(CachedWeaponData.KnockbackPower, 0.0f);
 	
 	UE_LOG(
-		LogTemp,
+		LogP48Weapon,
 		Log,
 		TEXT("%s: Knockback Target=%s, Direction=%s, Power=%.1f"),
 		*GetName(),
@@ -290,12 +316,12 @@ void AP48WeaponBase::HandleWeaponHit(AActor* HitActor)
 	
 	if (!EffectSpecHandle.IsValid())
 	{
-		UE_LOG(LogTemp, Error, TEXT("%s Groggy GameplayEffect Spec 생성에 실패했습니다."), *GetName());
+		UE_LOG(LogP48Weapon, Error, TEXT("%s Groggy GameplayEffect Spec 생성에 실패했습니다."), *GetName());
 		
 		return;
 	}
 	
-	const FGameplayTag GroggyDamageTag =
+	static const FGameplayTag GroggyDamageTag =
 		FGameplayTag::RequestGameplayTag(FName(TEXT("Data.GroggyDamage")));
 	
 	// GE_GroggyDamage의 Data.GroggyDamage에 무기별 수치 전달
@@ -305,7 +331,7 @@ void AP48WeaponBase::HandleWeaponHit(AActor* HitActor)
 	TargetASC->ApplyGameplayEffectSpecToSelf(*EffectSpecHandle.Data.Get());
 	
 	UE_LOG(
-		LogTemp,
+		LogP48Weapon,
 		Log,
 		TEXT("%s: %s에게 GroggyDamage %.1f 적용"),
 		*GetName(),
@@ -326,7 +352,5 @@ FVector AP48WeaponBase::CalculateKnockbackDirection(const AActor* HitActor) cons
 	
 	FVector KnockbackDirection = HitActor->GetActorLocation() - KnockbackSource->GetActorLocation();
 	
-	KnockbackDirection.Z = 0.0f;
-	
-	return KnockbackDirection.GetSafeNormal();
+	return KnockbackDirection.GetSafeNormal2D();
 }
