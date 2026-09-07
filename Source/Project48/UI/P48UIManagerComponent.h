@@ -22,13 +22,15 @@ public:
 	
 	void SetChatMessageString(const FString& InChatMessageString);
 	void PrintChatMessageString(const FChatMessage& InChatMessage);
-
+	
+	void HUDOpenChatInput();
+	void HUDCloseChatInput();
+	
+	bool GetIsChatInputOpen() const {return bIsChatInputOpen;}
+	void SetIsChatInputOpen(bool InIsChatInputOpen) {bIsChatInputOpen = InIsChatInputOpen;}
 protected:
-	void OpenChatInput();
-	void CloseChatInput();
-
 	//void ToggleChatInput();
-	AHSPlayerController* UIManagerGetController();
+	//AHSPlayerController* UIManagerGetController();
 	
 protected:
 	UPROPERTY(EditDefaultsOnly)
@@ -41,6 +43,7 @@ protected:
 	UPROPERTY()
 	TObjectPtr<UP48HUD> HUDInstance;
 	
+private:
 	bool bIsChatInputOpen = false;
 	
 protected:

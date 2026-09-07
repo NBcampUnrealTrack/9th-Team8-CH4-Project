@@ -3,7 +3,6 @@
 #include "Project48/UI/Chat/P48ChatWidget.h"
 #include "GameFramework/PlayerState.h"
 #include "HS/HSPlayerController.h"
-#include "Project48/Character/P48PlayerCharacter.h"
 #include "Project48/UI/Chat/ChatMessageData.h"
 #include "Project48/UI/P48HUD.h"
 
@@ -16,14 +15,15 @@ void UP48UIManagerComponent::BeginPlay()
 {
 	Super::BeginPlay();
 	
-	AHSPlayerController* PC = UIManagerGetController();
+	AHSPlayerController* PC = Cast<AHSPlayerController>(GetOwner());
+	if (IsValid(PC) == false) return;
 	PC->SetInputMode(FInputModeGameOnly());
 	
 	// 게임 중 계속 보이는 채팅 메시지 UI
 	if (IsValid(ChatWidgetClass) == false) return;
 
-	ChatWidgetInstance = CreateWidget<UP48ChatWidget>(this, ChatWidgetClass);
-	HUDInstance = CreateWidget<UP48HUD>(this, HUDClass);
+	ChatWidgetInstance = CreateWidget<UP48ChatWidget>(PC, ChatWidgetClass);
+	HUDInstance = CreateWidget<UP48HUD>(PC, HUDClass);
 
 	if (IsValid(ChatWidgetInstance) == false) return;
 	if (IsValid(HUDInstance) == false)
@@ -34,24 +34,13 @@ void UP48UIManagerComponent::BeginPlay()
 	HUDInstance->AddToViewport();
 }
 
-AHSPlayerController* UP48UIManagerComponent::UIManagerGetController()
-{
-	AP48PlayerCharacter* P48Character = Cast<AP48PlayerCharacter>(GetOwner());
-	if (P48Character == nullptr) return nullptr;
-	AHSPlayerController* PC = Cast<AHSPlayerController>(P48Character->GetController());
-	if (PC == nullptr) return nullptr;
-	else
-	{
-		return PC;
-	}
-}
-
-void UP48UIManagerComponent::OpenChatInput()
+void UP48UIManagerComponent::HUDOpenChatInput()
 {
 	if (IsValid(ChatWidgetInstance) == false) return;
 
 	bIsChatInputOpen = true;
-	AHSPlayerController* PC = UIManagerGetController();
+	AHSPlayerController* PC = Cast<AHSPlayerController>(GetOwner());
+	if (IsValid(PC) == false) return;
 	PC->SetInputMode(FInputModeGameAndUI());
 	
 	ChatWidgetInstance->OpenChatInput();
@@ -59,7 +48,7 @@ void UP48UIManagerComponent::OpenChatInput()
 	PC->bShowMouseCursor = true;
 }
 
-void UP48UIManagerComponent::CloseChatInput()
+void UP48UIManagerComponent::HUDCloseChatInput()
 {
 	if (IsValid(ChatWidgetInstance) == false) return;
 
@@ -67,7 +56,8 @@ void UP48UIManagerComponent::CloseChatInput()
 
 	ChatWidgetInstance->CloseChatInput();
 
-	AHSPlayerController* PC = UIManagerGetController();
+	AHSPlayerController* PC = Cast<AHSPlayerController>(GetOwner());
+	if (IsValid(PC) == false) return;
 	PC->SetInputMode(FInputModeGameOnly());
 
 	PC->bShowMouseCursor = false;
@@ -80,7 +70,7 @@ void UP48UIManagerComponent::SetChatMessageString(const FString& InChatMessageSt
 		ServerSendChatMessage(InChatMessageString);
 	}
 
-	CloseChatInput();
+	HUDCloseChatInput();
 }
 
 void UP48UIManagerComponent::PrintChatMessageString(const FChatMessage& InChatMessage)
@@ -96,7 +86,8 @@ void UP48UIManagerComponent::ServerSendChatMessage_Implementation(
 	/* 추후에 GSB변경 */
 	AHSGameStateBase* GameState = GetWorld()->GetGameState<AHSGameStateBase>();
 	if (IsValid(GameState) == false) return;
-	AHSPlayerController* PC = UIManagerGetController();
+	AHSPlayerController* PC = Cast<AHSPlayerController>(GetOwner());
+	if (IsValid(PC) == false) return;
 	FChatMessage ChatMessage;
 	
 	ChatMessage.PlayerName = PC->GetPlayerState<APlayerState>()->GetPlayerName();
