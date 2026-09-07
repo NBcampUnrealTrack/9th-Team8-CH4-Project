@@ -18,12 +18,18 @@ const FName UP48PCGBridgeNetworkSettings::ActorOutputLabel(TEXT("BridgeActorPoin
 
 namespace P48BridgeNetwork
 {
+	struct FSurfaceCandidate
+	{
+		FVector Location = FVector::ZeroVector;
+		FVector Outward = FVector::ForwardVector;
+	};
+
 	struct FAnchor
 	{
 		FVector Location = FVector::ZeroVector;
 		float Radius = 0.0f;
 		int32 IslandIndex = INDEX_NONE;
-		TArray<FVector> SurfaceCandidates;
+		TArray<FSurfaceCandidate> SurfaceCandidates;
 	};
 
 	struct FEdge
@@ -105,6 +111,14 @@ namespace P48BridgeNetwork
 		}
 
 		return FMath::RadiansToDegrees(FMath::Atan2(HeightDifference, HorizontalDistance)) <= Rules.MaxSlopeAngle;
+	}
+
+	bool FacesBridge(const FSurfaceCandidate& Candidate, const FVector& OtherLocation, const FP48BridgeConnectionRules& Rules)
+	{
+		const FVector ToOther = FVector(OtherLocation.X - Candidate.Location.X, OtherLocation.Y - Candidate.Location.Y, 0.0f).GetSafeNormal();
+		const FVector Outward = FVector(Candidate.Outward.X, Candidate.Outward.Y, 0.0f).GetSafeNormal();
+		const float MinimumDot = FMath::Cos(FMath::DegreesToRadians(FMath::Clamp(Rules.MaxEndpointFacingAngle, 0.0f, 89.0f)));
+		return !ToOther.IsNearlyZero() && !Outward.IsNearlyZero() && FVector::DotProduct(ToOther, Outward) >= MinimumDot;
 	}
 
 	template <typename TEntry, typename TIsValid>
@@ -208,7 +222,7 @@ FText UP48PCGBridgeNetworkSettings::GetDefaultNodeTitle() const
 
 FText UP48PCGBridgeNetworkSettings::GetNodeTooltipText() const
 {
-	return LOCTEXT("NodeTooltip", "Accepts Bridge Surface Points (IslandIndex + SurfaceNormal) or legacy Connection Anchors. Surface candidates are grouped by island; the shortest valid pair per island pair enters Kruskal MST. Surface positions are used unchanged; AnchorInset applies only to legacy anchors. Post footprint and obstacle clearance are not tested.");
+	return LOCTEXT("NodeTooltip", "Accepts Bridge Surface Points (IslandIndex + SurfaceNormal + SurfaceOutward) or legacy Connection Anchors. Surface candidates must face the other island before entering the MST. Surface positions are used unchanged; AnchorInset applies only to legacy anchors.");
 }
 #endif
 
@@ -256,9 +270,15 @@ bool FP48PCGBridgeNetworkElement::ExecuteInternal(FPCGContext* Context) const
 		const FPCGMetadataAttribute<float>* RadiusAttribute = InputPoints->Metadata->GetConstTypedAttribute<float>(P48PCGSpawnAttributeNames::PlacementRadius);
 		const FPCGMetadataAttribute<int32>* IslandIndexAttribute = InputPoints->Metadata->GetConstTypedAttribute<int32>(P48PCGSpawnAttributeNames::IslandIndex);
 		const bool bSurfaceInput = InputPoints->Metadata->GetConstTypedAttribute<FVector>(P48PCGSpawnAttributeNames::SurfaceNormal) != nullptr;
+		const FPCGMetadataAttribute<FVector>* SurfaceOutwardAttribute = InputPoints->Metadata->GetConstTypedAttribute<FVector>(P48PCGSpawnAttributeNames::SurfaceOutward);
 		if (bSurfaceInput && !IslandIndexAttribute)
 		{
 			PCGE_LOG(Error, GraphAndLog, LOCTEXT("MissingIslandId", "Surface points require IslandIndex to group points by island."));
+			continue;
+		}
+		if (bSurfaceInput && !SurfaceOutwardAttribute)
+		{
+			PCGE_LOG(Error, GraphAndLog, LOCTEXT("MissingSurfaceOutward", "Surface points require SurfaceOutward. Reconnect or regenerate the P48 Bridge Surface Points node."));
 			continue;
 		}
 		if (!bSurfaceInput && !RadiusAttribute)
@@ -284,7 +304,9 @@ bool FP48PCGBridgeNetworkElement::ExecuteInternal(FPCGContext* Context) const
 					Anchors[NewIndex].IslandIndex = IslandId;
 					Group = &IslandGroups.Add(IslandId, NewIndex);
 				}
-				Anchors[*Group].SurfaceCandidates.Add(InputPoints->GetTransform(Index).GetLocation());
+				P48BridgeNetwork::FSurfaceCandidate& Candidate = Anchors[*Group].SurfaceCandidates.Emplace_GetRef();
+				Candidate.Location = InputPoints->GetTransform(Index).GetLocation();
+				Candidate.Outward = SurfaceOutwardAttribute->GetValueFromItemKey(Entry);
 				continue;
 			}
 			P48BridgeNetwork::FAnchor& Anchor = Anchors.Emplace_GetRef();
@@ -310,20 +332,25 @@ bool FP48PCGBridgeNetworkElement::ExecuteInternal(FPCGContext* Context) const
 					Best.A = A;
 					Best.B = B;
 					Best.Length = TNumericLimits<float>::Max();
-					for (const FVector& StartCandidate : Anchors[A].SurfaceCandidates)
+					for (const P48BridgeNetwork::FSurfaceCandidate& StartCandidate : Anchors[A].SurfaceCandidates)
 					{
-						for (const FVector& EndCandidate : Anchors[B].SurfaceCandidates)
+						for (const P48BridgeNetwork::FSurfaceCandidate& EndCandidate : Anchors[B].SurfaceCandidates)
 						{
+							if (!P48BridgeNetwork::FacesBridge(StartCandidate, EndCandidate.Location, Settings->GenerationSettings.ConnectionRules) ||
+								!P48BridgeNetwork::FacesBridge(EndCandidate, StartCandidate.Location, Settings->GenerationSettings.ConnectionRules))
+							{
+								continue;
+							}
 							P48BridgeNetwork::FAnchor StartAnchor;
 							P48BridgeNetwork::FAnchor EndAnchor;
-							StartAnchor.Location = StartCandidate;
-							EndAnchor.Location = EndCandidate;
+							StartAnchor.Location = StartCandidate.Location;
+							EndAnchor.Location = EndCandidate.Location;
 							float CandidateLength = 0.0f;
 							if (P48BridgeNetwork::IsValidEdge(StartAnchor, EndAnchor, Settings->GenerationSettings.ConnectionRules, CandidateLength) && CandidateLength < Best.Length)
 							{
 								Best.Length = CandidateLength;
-								Best.Start = StartCandidate;
-								Best.End = EndCandidate;
+								Best.Start = StartCandidate.Location;
+								Best.End = EndCandidate.Location;
 							}
 						}
 					}
@@ -361,7 +388,8 @@ bool FP48PCGBridgeNetworkElement::ExecuteInternal(FPCGContext* Context) const
 
 		if (SelectedEdgeIndices.Num() != Anchors.Num() - 1)
 		{
-			PCGE_LOG(Error, GraphAndLog, LOCTEXT("DisconnectedGraph", "The bridge rules cannot connect every island. No complete MST exists."));
+			PCGE_LOG(Error, GraphAndLog, LOCTEXT("DisconnectedGraph", "The bridge rules and endpoint-facing test cannot connect every island. No bridges were emitted for this input."));
+			continue;
 		}
 
 		FRandomStream Random(PCGHelpers::ComputeSeed(Settings->GenerationSettings.RandomSeed, P48ReadNetworkSeed(Context)));

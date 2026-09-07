@@ -58,16 +58,14 @@ private:
 	void OnRep_BridgeNetworkState();
 	void ClearGeneratedComponents();
 	void PlacePlanks(const FP48BridgeLayoutResult& LayoutResult);
-	void PlacePlankWalkCollisions(const FP48BridgeLayoutResult& LayoutResult);
 	void PlaceAttachedMeshes(const FP48BridgeAttachedMeshAssetSettings& AssetSettings, const TArray<FTransform>& Transforms, const TCHAR* NamePrefix, TArray<TObjectPtr<UStaticMeshComponent>>& OutComponents, bool bAllowCollision = true);
 	void PlaceRopes(const FP48BridgeRopePathResult& RopeResult);
 	void TickServerSimulation(float DeltaSeconds);
 	void TickClientInterpolation(float DeltaSeconds);
-	void ApplyNodeState(const TArray<FP48BridgePlankNode>& Nodes);
+	void ApplyNodeState(const TArray<FP48BridgePlankNode>& Nodes, bool bUpdateRopes, bool bApplyPlanks = true);
 	void PublishNetworkState();
 	int32 ResolveGenerationId() const;
 	void ApplyPlankTransforms(const TArray<FTransform>& PlankTransforms);
-	void ApplyStaticMeshTransforms(const TArray<FTransform>& Transforms, const TArray<TObjectPtr<UStaticMeshComponent>>& Components);
 	void ApplyRopePaths(const FP48BridgeRopePathResult& RopeResult, bool bUpdateCollision);
 	bool IsPlayerNearBridge() const;
 	void ApplySplinePoints(USplineComponent* Spline, const TArray<FVector>& Points);
@@ -75,7 +73,6 @@ private:
 	void CreateSplineMeshComponents(int32 Count, const TCHAR* NamePrefix, const FP48BridgeRopeAssetSettings& RopeAssets, TArray<TObjectPtr<USplineMeshComponent>>& OutComponents);
 	void CreateRopeCollisionComponents(int32 Count);
 	void ApplyRopeCollision(const FP48BridgeRopePathResult& RopeResult);
-	void ApplyPlankWalkCollisionTransforms(const TArray<FTransform>& PlankTransforms);
 
 	UPROPERTY(VisibleAnywhere, Category = "Bridge|Component")
 	TObjectPtr<USceneComponent> SceneRoot;
@@ -98,8 +95,6 @@ private:
 	
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UStaticMeshComponent>> PlankComponents;
-	UPROPERTY(Transient)
-	TArray<TObjectPtr<UBoxComponent>> PlankWalkCollisionComponents;
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UStaticMeshComponent>> LeftPlankLashingComponents;
 	UPROPERTY(Transient)
@@ -127,6 +122,7 @@ private:
 
 	float LoadUpdateAccumulator = 0.0f;
 	float NetworkUpdateAccumulator = 0.0f;
+	float RopeVisualUpdateAccumulator = 0.0f;
 	uint16 SimulationFrame = 0;
 	int32 BridgeGenerationId = 0;
 	TArray<FP48BridgePlankNode> RestNodes;

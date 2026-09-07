@@ -9,6 +9,7 @@ struct PROJECT48_API FP48PlayerSpawnSettings
 {
 	GENERATED_BODY()
 
+	/** 플레이어 수를 아직 읽을 수 없을 때 사용할 최소 생성 개수입니다. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|PlayerSpawn", meta = (ClampMin = "1"))
 	int32 SpawnCount = 1;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|PlayerSpawn", meta = (ClampMin = "0.0", Units = "cm"))
