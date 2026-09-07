@@ -10,8 +10,3 @@ void UP48UIManagerComponent::BeginPlay()
 	Super::BeginPlay();
 }
 
-void UP48UIManagerComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
-{
-	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-}
-
