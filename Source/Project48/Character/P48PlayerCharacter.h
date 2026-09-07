@@ -57,6 +57,34 @@ protected:
 	UFUNCTION(BlueprintCallable, Category="Attack|Hit")
 	void OnHit(const FVector& HitLocation, const FVector& HitDirection, float ImpulseStrength);
 	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Attack|GAS")
+	TSubclassOf<class UGameplayEffect> GroggyEffectClass;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Attack|GAS")
+	float GroggyDamage = 20.0f;
+	
+	void ApplyGroggyDamage(AActor* HitActor);
+	
+	//Stun
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Stun|GAS")
+	TSubclassOf<class UGameplayEffect> StunEffectClass;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Stun|GAS")
+	TSubclassOf<class UGameplayEffect> ResetGroggyEffectClass;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Stun|GAS")
+	TObjectPtr<UAnimMontage> StunMontage;
+	
+	UPROPERTY()
+	FVector LastHitDirection = FVector::ZeroVector;
+	
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_PlayStunMontage(bool bPlay, FRotator TargetRotation = FRotator::ZeroRotator);
+	
+	void OnGroggyChanged(const struct FOnAttributeChangeData& Data);
+	
+	void OnStunTagChanged(const struct FGameplayTag CallbackTag, int32 NewCount);
+	
 	//UI
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="UI|Nickname")
 	TObjectPtr<UP48PlayerNameWidgetComponent> NicknameWidgetComponent;
@@ -142,6 +170,9 @@ private:
 	
 	UFUNCTION(Server, Unreliable)
 	void Server_Attack();
+	
+	UFUNCTION(Server, Reliable, WithValidation)
+	void Server_ApplyHit(AActor* HitActor, const FVector& HitLoc, const FVector& HitDir);
 	
 	//MulticastRPC
 	UFUNCTION(NetMulticast, Unreliable)
