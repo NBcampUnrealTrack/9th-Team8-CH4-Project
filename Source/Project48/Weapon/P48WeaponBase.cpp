@@ -78,11 +78,13 @@ void AP48WeaponBase::ApplyWeaponData()
 	
 	if (!WeaponDataHandle.DataTable)
 	{
+		UE_LOG(LogP48Weapon, Error, TEXT("%s: Weapon DataTable이 설정되지 않았습니다."), *GetName());
 		return;
 	}
 	
 	if (WeaponDataHandle.RowName.IsNone())
 	{
+		UE_LOG(LogP48Weapon, Error, TEXT("%s: Weapon DataTable Row가 설정되지 않았습니다."), *GetName());
 		return;
 	}
 	
