@@ -47,6 +47,7 @@ void UP48MatchmakingSubsystem::Deinitialize()
 
 	SessionSearch.Reset();
 	SessionSearchResults.Reset();
+	bJoinFirstResultAfterSearch = false;
 	SessionInterface.Reset();
 	Super::Deinitialize();
 }
@@ -78,7 +79,8 @@ bool UP48MatchmakingSubsystem::CreateSession(int32 NumPublicConnections, bool bI
 	SessionSettings.bIsLANMatch = bIsLANMatch;
 	SessionSettings.bShouldAdvertise = true;
 	SessionSettings.bAllowJoinInProgress = true;
-	SessionSettings.bIsDedicated = IsRunningDedicatedServer();
+	SessionSettings.bIsDedicated = GetWorld()
+		&& GetWorld()->GetNetMode() == NM_DedicatedServer;
 
 	if (const UWorld* World = GetWorld())
 	{
@@ -178,6 +180,20 @@ bool UP48MatchmakingSubsystem::FindSessions(int32 MaxSearchResults, bool bIsLANQ
 	}
 
 	return true;
+}
+
+bool UP48MatchmakingSubsystem::FindAndJoinFirstSession(
+	int32 MaxSearchResults,
+	bool bIsLANQuery)
+{
+	bJoinFirstResultAfterSearch = true;
+	if (FindSessions(MaxSearchResults, bIsLANQuery))
+	{
+		return true;
+	}
+
+	bJoinFirstResultAfterSearch = false;
+	return false;
 }
 
 bool UP48MatchmakingSubsystem::JoinSession(int32 SearchResultIndex)
@@ -288,7 +304,25 @@ void UP48MatchmakingSubsystem::HandleFindSessionsComplete(bool bWasSuccessful)
 		}
 	}
 
+	const bool bShouldJoinFirstResult = bJoinFirstResultAfterSearch;
+	bJoinFirstResultAfterSearch = false;
+
 	OnFindSessionsCompleted.Broadcast(bWasSuccessful, SessionSearchResults);
+
+	if (bShouldJoinFirstResult)
+	{
+		if (bWasSuccessful && SessionSearchResults.IsEmpty() == false)
+		{
+			if (JoinSession(0) == false)
+			{
+				OnJoinSessionCompleted.Broadcast(false);
+			}
+		}
+		else
+		{
+			OnJoinSessionCompleted.Broadcast(false);
+		}
+	}
 }
 
 void UP48MatchmakingSubsystem::HandleJoinSessionComplete(
