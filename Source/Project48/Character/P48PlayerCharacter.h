@@ -65,6 +65,26 @@ protected:
 	
 	void ApplyGroggyDamage(AActor* HitActor);
 	
+	//Stun
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Stun|GAS")
+	TSubclassOf<class UGameplayEffect> StunEffectClass;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Stun|GAS")
+	TSubclassOf<class UGameplayEffect> ResetGroggyEffectClass;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Stun|GAS")
+	TObjectPtr<UAnimMontage> StunMontage;
+	
+	UPROPERTY()
+	FVector LastHitDirection = FVector::ZeroVector;
+	
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_PlayStunMontage(bool bPlay, FRotator TargetRotation = FRotator::ZeroRotator);
+	
+	void OnGroggyChanged(const struct FOnAttributeChangeData& Data);
+	
+	void OnStunTagChanged(const struct FGameplayTag CallbackTag, int32 NewCount);
+	
 	//UI
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="UI|Nickname")
 	TObjectPtr<UP48PlayerNameWidgetComponent> NicknameWidgetComponent;

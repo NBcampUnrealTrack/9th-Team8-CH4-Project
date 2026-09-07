@@ -148,6 +148,17 @@ void AP48PlayerCharacter::PossessedBy(AController* NewController)
 	}
 	
 	InitializeStatsFromDataTable();
+	
+	if (AbilitySystemComponent && GroggyAttributeSet)
+	{
+		AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(
+			GroggyAttributeSet->GetGroggyAttribute()
+			).AddUObject(this, &AP48PlayerCharacter::OnGroggyChanged);
+		
+		const FGameplayTag StunTag = FGameplayTag::RequestGameplayTag(FName("State.Stunned"));
+		AbilitySystemComponent->RegisterGameplayTagEvent(StunTag, EGameplayTagEventType::NewOrRemoved)
+		.AddUObject(this, &AP48PlayerCharacter::OnStunTagChanged);
+	}
 }
 
 void AP48PlayerCharacter::OnRep_PlayerState()
@@ -162,6 +173,10 @@ void AP48PlayerCharacter::OnRep_PlayerState()
 	InitializeStatsFromDataTable();
 	
 	UpdateNickname();
+	
+	const FGameplayTag StunTag = FGameplayTag::RequestGameplayTag(FName("State.Stunned"));
+	AbilitySystemComponent->RegisterGameplayTagEvent(StunTag, EGameplayTagEventType::NewOrRemoved)
+	.AddUObject(this, &AP48PlayerCharacter::OnStunTagChanged);
 }
 
 
@@ -469,6 +484,8 @@ void AP48PlayerCharacter::OnHit(const FVector& HitLocation, const FVector& HitDi
 	
 	const FVector Impulse = HitDirection.GetSafeNormal() * ImpulseStrength;
 	
+	LastHitDirection = HitDirection;
+	
 	if (HasAuthority())
 	{
 		Multicast_OnHit(HitLocation, Impulse);
@@ -585,4 +602,98 @@ void AP48PlayerCharacter::Server_ApplyHit_Implementation(AActor* HitActor, const
 	}
 	
 	UE_LOG(LogTemp, Warning, TEXT("[ServerRPC] %s가 %s 타격"), *GetName(), *HitActor->GetName());
+}
+
+void AP48PlayerCharacter::Multicast_PlayStunMontage_Implementation(bool bPlay, FRotator TargetRotation)
+{
+	if (!StunMontage)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("There is no StunMontage"));
+		return;
+	}
+	
+	if (bPlay)
+	{	
+		if (!TargetRotation.IsZero())
+		{
+			SetActorRotation(FRotator(0.0f, TargetRotation.Yaw, 0.0f));
+		}
+		
+		PlayAnimMontage(StunMontage);
+	}
+	else
+	{
+		StopAnimMontage(StunMontage);
+	}
+}
+
+void AP48PlayerCharacter::OnGroggyChanged(const struct FOnAttributeChangeData& Data)
+{
+	if (!HasAuthority() || !AbilitySystemComponent || !GroggyAttributeSet)
+	{
+		return;
+	}
+	
+	const float CurrentGroggy = Data.NewValue;
+	const float MaxGroggy = GroggyAttributeSet->GetMaxGroggy();
+	
+	if (CurrentGroggy >= MaxGroggy && MaxGroggy > 0.0f)
+	{
+		const FGameplayTag StunTag = FGameplayTag::RequestGameplayTag(FName("State.Stunned"));
+		
+		if (!AbilitySystemComponent->HasMatchingGameplayTag(StunTag))
+		{
+			FGameplayEffectContextHandle ContextHandle = AbilitySystemComponent->MakeEffectContext();
+			ContextHandle.AddSourceObject(this);
+			
+			if (StunEffectClass)
+			{
+				AbilitySystemComponent->BP_ApplyGameplayEffectToSelf(StunEffectClass, 1.0f, ContextHandle);
+			}
+			
+			if (ResetGroggyEffectClass)
+			{
+				AbilitySystemComponent->BP_ApplyGameplayEffectToSelf(ResetGroggyEffectClass, 1.0f, ContextHandle);
+			}
+			else
+			{
+				GroggyAttributeSet->SetGroggy(0.0f);
+			}
+			
+			FRotator FaceAttackerRot = GetActorRotation();
+			
+			UE_LOG(LogTemp, Warning, TEXT("[%s] 그로기 게이지 만충! 스턴 돌입!"), *GetName());
+		}
+	}
+}
+
+void AP48PlayerCharacter::OnStunTagChanged(const struct FGameplayTag CallbackTag, int32 NewCount)
+{
+	const bool bIsStunned = (NewCount > 0);
+	
+	if (HasAuthority())
+	{
+		FRotator LookAtRotation = FRotator::ZeroRotator;
+		
+		if (bIsStunned && !LastHitDirection.IsNearlyZero())
+		{
+			const FVector FaceToAttackDirection = -LastHitDirection;
+			
+			LookAtRotation = FRotator(0.0f, FaceToAttackDirection.Rotation().Yaw, 0.0f);
+		}
+		
+		Multicast_PlayStunMontage(bIsStunned, LookAtRotation);
+	}
+	
+	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+	{
+		if (bIsStunned)
+		{
+			MoveComp->DisableMovement();
+		}	
+		else
+		{
+			MoveComp->SetMovementMode(MOVE_Walking);
+		}
+	}
 }
