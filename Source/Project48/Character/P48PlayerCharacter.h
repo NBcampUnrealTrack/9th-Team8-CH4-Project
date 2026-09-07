@@ -57,6 +57,14 @@ protected:
 	UFUNCTION(BlueprintCallable, Category="Attack|Hit")
 	void OnHit(const FVector& HitLocation, const FVector& HitDirection, float ImpulseStrength);
 	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Attack|GAS")
+	TSubclassOf<class UGameplayEffect> GroggyEffectClass;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Attack|GAS")
+	float GroggyDamage = 20.0f;
+	
+	void ApplyGroggyDamage(AActor* HitActor);
+	
 	//UI
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="UI|Nickname")
 	TObjectPtr<UP48PlayerNameWidgetComponent> NicknameWidgetComponent;
@@ -142,6 +150,9 @@ private:
 	
 	UFUNCTION(Server, Unreliable)
 	void Server_Attack();
+	
+	UFUNCTION(Server, Reliable, WithValidation)
+	void Server_ApplyHit(AActor* HitActor, const FVector& HitLoc, const FVector& HitDir);
 	
 	//MulticastRPC
 	UFUNCTION(NetMulticast, Unreliable)

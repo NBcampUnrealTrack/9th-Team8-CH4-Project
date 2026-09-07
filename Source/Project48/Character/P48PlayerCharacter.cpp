@@ -17,6 +17,7 @@
 #include "PhysicsEngine/PhysicalAnimationComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Components/SphereComponent.h"
+#include "AbilitySystemBlueprintLibrary.h"
 
 AP48PlayerCharacter::AP48PlayerCharacter()
 {
@@ -367,8 +368,6 @@ void AP48PlayerCharacter::InitializeStatsFromDataTable()
 			GroggyAttributeSet->InitMaxGroggy(CurrentStatRow.MaxGroggy);
 		}
 	}
-	
-	
 }
 
 void AP48PlayerCharacter::Server_SetMaxWalkSpeed_Implementation(float NewSpeed)
@@ -430,37 +429,44 @@ void AP48PlayerCharacter::OnRightHandOverlap(
 	}
 	HitActorThisPunch.Add(OtherActor);
 	
+	/*
 	if (HasAuthority())
 	{
-		if (UAbilitySystemComponent* TargetASC = OtherActor->FindComponentByClass<UAbilitySystemComponent>())
-		{
-			FGameplayEffectContextHandle ContextHandle;
-			if (AbilitySystemComponent)
-			{
-				ContextHandle = AbilitySystemComponent->MakeEffectContext();
-			}
-			ContextHandle.AddSourceObject(this);
-			
-			TargetASC->ApplyGameplayEffectToSelf(
-				UP48GE_Damage::StaticClass()->GetDefaultObject<UGameplayEffect>(),
-				1.0f,
-				ContextHandle
-				);
-			UE_LOG(LogTemp, Warning, TEXT("Hit"));
-		}
+	ApplyGroggyDamage(OtherActor);
 	}
 	
 	if (AP48PlayerCharacter* TargetCharacter = Cast<AP48PlayerCharacter>(OtherActor))
 	{
-		const FVector HitDir = (TargetCharacter->GetActorLocation() - GetActorLocation()).GetSafeNormal();
-		const FVector HitLoc = RightHandHitbox ? RightHandHitbox->GetComponentLocation() : TargetCharacter->GetActorLocation();
+	const FVector HitDir = (TargetCharacter->GetActorLocation() - GetActorLocation()).GetSafeNormal();
+	const FVector HitLoc = RightHandHitbox ? RightHandHitbox->GetComponentLocation() : TargetCharacter->GetActorLocation();
 		
-		TargetCharacter->OnHit(HitLoc, HitDir, 60000.f);
+	TargetCharacter->OnHit(HitLoc, HitDir, 60000.f);
+	}*/
+	
+	if (IsLocallyControlled())
+	{
+		const FVector HitDir = (OtherActor->GetActorLocation() - GetActorLocation().GetSafeNormal());
+		const FVector HitLoc = RightHandHitbox ? RightHandHitbox->GetComponentLocation() : OtherActor->GetActorLocation();
+		
+		if (HasAuthority())
+		{
+			ApplyGroggyDamage(OtherActor);
+			if (AP48PlayerCharacter* TargetCharacter = Cast<AP48PlayerCharacter>(OtherActor))
+			{
+				TargetCharacter->OnHit(HitLoc, HitDir, 60000.f);
+			}
+		}
+		else
+		{
+			Server_ApplyHit(OtherActor, HitLoc, HitDir);
+		}
 	}
 }
 
 void AP48PlayerCharacter::OnHit(const FVector& HitLocation, const FVector& HitDirection, float ImpulseStrength)
 {
+	UE_LOG(LogTemp, Warning, TEXT("OnHit"));
+	
 	const FVector Impulse = HitDirection.GetSafeNormal() * ImpulseStrength;
 	
 	if (HasAuthority())
@@ -521,4 +527,62 @@ void AP48PlayerCharacter::UpdateNickname()
 		return;
 	}
 	NicknameWidget->SetPlayerName(PS->GetPlayerName());
+}
+
+void AP48PlayerCharacter::ApplyGroggyDamage(AActor* HitActor)
+{
+	UE_LOG(LogTemp, Warning, TEXT("ApplyGroggyDamage"));
+	
+	if (!HasAuthority() || !IsValid(HitActor))
+	{
+		return;
+	}
+	
+	if (!GroggyEffectClass)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("There is no GroggyEffectClass"));
+		return;
+	}
+	
+	UAbilitySystemComponent* TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(HitActor);
+	if (!TargetASC)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Target has no ASC"));
+		return;
+	}
+	
+	FGameplayEffectContextHandle ContextHandle = TargetASC->MakeEffectContext();
+	ContextHandle.AddSourceObject(this);
+	
+	FGameplayEffectSpecHandle SpecHandle = TargetASC->MakeOutgoingSpec(GroggyEffectClass, 1.0f, ContextHandle);
+	if (!SpecHandle.IsValid())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("SpecHandle is not valid"));
+		return;
+	}
+	
+	const FGameplayTag GroggyDataTag = FGameplayTag::RequestGameplayTag(FName("Data.GroggyDamage"));
+	SpecHandle.Data->SetSetByCallerMagnitude(GroggyDataTag, GroggyDamage);
+	
+	TargetASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+	
+	UE_LOG(LogTemp, Log, TEXT("[%s]가 [%s]에게 주먹 피격, Groggy +%.1f 누적"),
+		*GetName(), *HitActor->GetName(), GroggyDamage);
+}
+
+bool AP48PlayerCharacter::Server_ApplyHit_Validate(AActor* HitActor, const FVector& HitLoc, const FVector& HitDir)
+{
+	return IsValid(HitActor);	
+}
+
+void AP48PlayerCharacter::Server_ApplyHit_Implementation(AActor* HitActor, const FVector& HitLoc, const FVector& HitDir)
+{
+	ApplyGroggyDamage(HitActor);
+	
+	if (AP48PlayerCharacter* TargetCharacter = Cast<AP48PlayerCharacter>(HitActor))
+	{
+		TargetCharacter->OnHit(HitLoc, HitDir, 60000.f);
+	}
+	
+	UE_LOG(LogTemp, Warning, TEXT("[ServerRPC] %s가 %s 타격"), *GetName(), *HitActor->GetName());
 }
