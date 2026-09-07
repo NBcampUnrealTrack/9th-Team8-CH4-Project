@@ -104,9 +104,26 @@ void AP48WeaponBase::ApplyWeaponData()
 		return;
 	}
 	
-	CachedWeaponData = *FoundData;
-	bHasValidWeaponData = true;
+	if (!FoundData->HasValidBalanceData())
+	{
+		UE_LOG(
+			LogP48Weapon,
+			Error,
+			TEXT("%s: Weapon 수치 데이터가 올바르지 않습니다. "
+				"Row=%s, GroggyDamage=%.1f, KnockbackPower=%.1f, "
+				"AttackCooldown=%.1f, Weight=%.1f"),
+				*GetName(),
+				*WeaponDataHandle.RowName.ToString(),
+				FoundData->GroggyDamage,
+				FoundData->KnockbackPower,
+				FoundData->AttackCooldown,
+				FoundData->Weight);
+		
+		return;
+	}
 	
+	CachedWeaponData = *FoundData;
+		
 	UStaticMesh* LoadedMesh = CachedWeaponData.WeaponMesh.LoadSynchronous();
 	
 	if (LoadedMesh)
@@ -118,8 +135,9 @@ void AP48WeaponBase::ApplyWeaponData()
 		WeaponMeshComponent->SetMassOverrideInKg(
 			NAME_None,
 			SafeWeight,
-			true
-			);
+			true);
+			
+		bHasValidWeaponData = true;
 	}
 	else
 	{
