@@ -7,7 +7,7 @@
 struct FChatMessage;
 class UP48ChatInput;
 class UP48ChatWidget;
-class UP48CombatWidget;
+class UP48HUD;
 
 UCLASS()
 class PROJECT48_API AHSPlayerController : public AP48PlayerController
@@ -34,9 +34,9 @@ protected:
 	TObjectPtr<UP48ChatWidget> ChatWidgetInstance; // 실제로 생성된 채팅 위젯 객체를 저장하는 변수
 	
 	UPROPERTY(EditDefaultsOnly)
-	TSubclassOf<UP48CombatWidget> CombatWidgetClass;
+	TSubclassOf<UP48HUD> CombatWidgetClass;
 	UPROPERTY()
-	TObjectPtr<UP48CombatWidget> CombatWidgetInstance;
+	TObjectPtr<UP48HUD> CombatWidgetInstance;
 	
 	bool bIsChatInputOpen = false;
 	
