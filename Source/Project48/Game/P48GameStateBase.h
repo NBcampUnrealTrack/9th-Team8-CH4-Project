@@ -55,6 +55,16 @@ public:
 	
 	void ResetMatchResult();
 	
+	// 서버에서 결정전 진행 상태 변경
+	void SetTiebreaker(bool bNewTiebreaker);
+
+	// 현재 결정전 상태인지 조회
+	UFUNCTION(BlueprintPure, Category = "Match")
+	bool IsTiebreaker() const
+	{
+		return bIsTiebreaker;
+	}
+	
 	// UI에서 바인딩할 통합 이벤트
 	UPROPERTY(BlueprintAssignable, Category = "Round|Event")
 	FP48OnRoundResultChanged OnRoundResultChanged;
@@ -111,4 +121,8 @@ protected:
 	
 	UPROPERTY(ReplicatedUsing = OnRep_MatchWinner, BlueprintReadOnly, Category = "Match")
 	TObjectPtr<AP48PlayerState> MatchWinner = nullptr;
+	
+	// 결정전 준비 및 진행 중인지 여부
+	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Match")
+	bool bIsTiebreaker = false;
 };

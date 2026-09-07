@@ -168,6 +168,7 @@ void AP48GameModeBase::Logout(AController* Exit)
     UE_LOG(LogTemp,Warning,TEXT("Remaining Match Participants: %d"),RemainingParticipantCount);
 
     if (IsValid(P48GameState) == true
+        && !P48GameState->IsTiebreaker()
         && P48GameState->MatchPhase == EP48MatchPhase::Countdown
         && bWasMatchParticipant == true
         && RemainingParticipantCount < MinPlayersToStart)
@@ -380,7 +381,11 @@ void AP48GameModeBase::PrepareNextRound()
 		return;
 	}
 	
-	P48GameState->SetCurrentRound(P48GameState->CurrentRound + 1);
+	// 결정전과 재경기는 일반 라운드 번호에 포함하지 않는다.
+	if (!P48GameState->IsTiebreaker())
+	{
+		P48GameState->SetCurrentRound(P48GameState->CurrentRound + 1);
+	}
 	
 	UE_LOG(LogTemp,Warning,TEXT("[Server] Preparing Round %d"),P48GameState->CurrentRound);
 	
