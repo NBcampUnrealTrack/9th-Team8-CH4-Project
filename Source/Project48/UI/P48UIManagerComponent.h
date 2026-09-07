@@ -34,14 +34,9 @@ protected:
 	
 protected:
 	UPROPERTY(EditDefaultsOnly)
-	TSubclassOf<UP48ChatWidget> ChatWidgetClass; // UP48ChatWidget 기반으로 만들어진 WidgetBlueprint의 클래스
+	TSubclassOf<UP48HUD> HUDClass; // UP48HUD 기반으로 만들어진 WidgetBlueprint의 클래스
 	UPROPERTY()
-	TObjectPtr<UP48ChatWidget> ChatWidgetInstance; // 실제로 생성된 채팅 위젯 객체를 저장하는 변수
-	
-	UPROPERTY(EditDefaultsOnly)
-	TSubclassOf<UP48HUD> HUDClass;
-	UPROPERTY()
-	TObjectPtr<UP48HUD> HUDInstance;
+	TObjectPtr<UP48HUD> HUDInstance; // 실제로 생성된 채팅 위젯 객체를 저장하는 변수
 	
 private:
 	bool bIsChatInputOpen = false;

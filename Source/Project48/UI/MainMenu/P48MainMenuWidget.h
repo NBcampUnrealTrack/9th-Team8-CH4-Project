@@ -15,9 +15,11 @@ protected:
 	virtual void NativeConstruct() override;
 
 	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UButton> GameStartButton;
+	TObjectPtr<UButton> Button_GameStart;
 	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UButton> GameQuitButton;
+	TObjectPtr<UButton> Button_GameQuit;
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UButton> Button_Settings;
 
 private:
 	UFUNCTION()

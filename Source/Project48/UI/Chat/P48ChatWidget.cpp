@@ -4,7 +4,6 @@
 #include "Components/EditableTextBox.h"
 #include "Components/VerticalBox.h"
 #include "Components/ScrollBox.h"
-#include "ChatMessageData.h"
 
 void UP48ChatWidget::AddChatMessage(const FChatMessage& InChatMessage)
 {

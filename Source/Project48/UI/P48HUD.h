@@ -6,6 +6,11 @@
 
 class UP48ChatWidget;
 class UP48RankingWidget;
+struct FChatMessage;
+class UVerticalBox;
+class UScrollBox;
+class UP48ChatMessage;
+class UP48ChatInput;
 
 UCLASS()
 class PROJECT48_API UP48HUD : public UUserWidget
@@ -13,9 +18,28 @@ class PROJECT48_API UP48HUD : public UUserWidget
 	GENERATED_BODY()
 	
 protected:
-	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UP48ChatWidget> ChatWidget;
+	virtual void NativeConstruct() override;
+	
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UP48RankingWidget> RankingWidget;
 	
+	/* Chat System */
+public:
+	void OpenChatInput();
+	void CloseChatInput();
+	void AddChatMessage(const FChatMessage& InChatMessage);
+
+protected:
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UScrollBox> ScrollBox_Chat;
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UVerticalBox> VerticalBox_ChatMessages;
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UP48ChatInput> ChatInput;
+
+	UPROPERTY(EditDefaultsOnly)
+	TSubclassOf<UP48ChatMessage> ChatMessageClass;
+	
+	UPROPERTY(EditDefaultsOnly)
+	int32 MaxChatMessageCount = 10; // 최대 메시지 개수 제한
 };

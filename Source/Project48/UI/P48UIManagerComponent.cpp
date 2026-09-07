@@ -1,6 +1,5 @@
 #include "P48UIManagerComponent.h"
 #include "Project48/UI/HS/HSGameStateBase.h"
-#include "Project48/UI/Chat/P48ChatWidget.h"
 #include "GameFramework/PlayerState.h"
 #include "HS/HSPlayerController.h"
 #include "Project48/UI/Chat/ChatMessageData.h"
@@ -20,15 +19,14 @@ void UP48UIManagerComponent::BeginPlay()
 	PC->SetInputMode(FInputModeGameOnly());
 	
 	// 게임 중 계속 보이는 채팅 메시지 UI
-	if (IsValid(ChatWidgetClass) == false) return;
-
-	ChatWidgetInstance = CreateWidget<UP48ChatWidget>(PC, ChatWidgetClass);
+	if (IsValid(HUDClass) == false) return;
+	
 	HUDInstance = CreateWidget<UP48HUD>(PC, HUDClass);
-
-	if (IsValid(ChatWidgetInstance) == false) return;
+	
 	if (IsValid(HUDInstance) == false)
 	{
 		UE_LOG(LogTemp, Error, TEXT("HUD생성 못함"));
+		return;
 	}
 	
 	HUDInstance->AddToViewport();
@@ -36,25 +34,25 @@ void UP48UIManagerComponent::BeginPlay()
 
 void UP48UIManagerComponent::HUDOpenChatInput()
 {
-	if (IsValid(ChatWidgetInstance) == false) return;
+	if (IsValid(HUDInstance) == false) return;
 
 	bIsChatInputOpen = true;
 	AHSPlayerController* PC = Cast<AHSPlayerController>(GetOwner());
 	if (IsValid(PC) == false) return;
 	PC->SetInputMode(FInputModeGameAndUI());
 	
-	ChatWidgetInstance->OpenChatInput();
+	HUDInstance->OpenChatInput();
 	
 	PC->bShowMouseCursor = true;
 }
 
 void UP48UIManagerComponent::HUDCloseChatInput()
 {
-	if (IsValid(ChatWidgetInstance) == false) return;
+	if (IsValid(HUDInstance) == false) return;
 
 	bIsChatInputOpen = false;
 
-	ChatWidgetInstance->CloseChatInput();
+	HUDInstance->CloseChatInput();
 
 	AHSPlayerController* PC = Cast<AHSPlayerController>(GetOwner());
 	if (IsValid(PC) == false) return;
@@ -75,9 +73,9 @@ void UP48UIManagerComponent::SetChatMessageString(const FString& InChatMessageSt
 
 void UP48UIManagerComponent::PrintChatMessageString(const FChatMessage& InChatMessage)
 {
-	if (IsValid(ChatWidgetInstance) == false) return;
+	if (IsValid(HUDInstance) == false) return;
 	
-	ChatWidgetInstance->AddChatMessage(InChatMessage);
+	HUDInstance->AddChatMessage(InChatMessage);
 }
 
 void UP48UIManagerComponent::ServerSendChatMessage_Implementation(
