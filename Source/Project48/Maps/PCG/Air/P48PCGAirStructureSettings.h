@@ -25,6 +25,7 @@ public:
 	static const FName StaticMeshOutputLabel;
 	static const FName ActorOutputLabel;
 	static const FName AnchorOutputLabel;
+	static const FName MapBoundsOutputLabel;
 
 #if WITH_EDITOR
 	virtual FName GetDefaultNodeName() const override { return FName(TEXT("P48AirStructureGenerator")); }
