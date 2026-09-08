@@ -2,5 +2,5 @@
 
 UP48PlayerNameWidgetComponent::UP48PlayerNameWidgetComponent()
 {
-	SetWidgetSpace(EWidgetSpace::Screen);
+	SetWidgetSpace(EWidgetSpace::World);
 }
