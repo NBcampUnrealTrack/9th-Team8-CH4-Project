@@ -1,4 +1,6 @@
 #include "P48HUD.h"
+
+#include "P48RankingWidget.h"
 #include "Project48/UI/Chat/P48ChatInput.h"
 #include "Project48/UI/Chat/P48ChatMessage.h"
 #include "Components/EditableTextBox.h"
@@ -31,6 +33,7 @@ void UP48HUD::NativeConstruct()
 	Super::NativeConstruct();
 
 	ChatInput->SetVisibility(ESlateVisibility::Collapsed);
+	RankingWidget->UpdateRanking();
 }
 
 void UP48HUD::OpenChatInput()

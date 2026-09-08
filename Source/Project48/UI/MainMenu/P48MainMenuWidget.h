@@ -24,7 +24,5 @@ protected:
 private:
 	UFUNCTION()
 	void OnGameStartClicked();
-	UFUNCTION()
-	void OnGameQuitClicked();
 	
 };
