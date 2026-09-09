@@ -55,6 +55,14 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Match", meta = (ClampMin = "1", UIMin = "1"))
 	int32 DefaultRoundCount = 3;
 
+	// 일반 라운드와 결정전에 공통으로 적용할 제한 시간
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Round", meta = (ClampMin = "1.0"))
+	float RoundTimeLimit = 10.0f;
+
+	FTimerHandle RoundTimeLimitTimerHandle;
+
+	void HandleRoundTimeExpired();
+
 private:
 	// 참가 자격을 확인한 목록으로 라운드 승패 판정
 	FP48RoundResult EvaluateRound() const;

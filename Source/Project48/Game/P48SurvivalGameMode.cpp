@@ -69,7 +69,7 @@ FP48RoundResult AP48SurvivalGameMode::EvaluateRound() const
 		}
 	}
 
-	return RoundWinCondition->Evaluate(Participants);
+	return RoundWinCondition->Evaluate(Participants, GS->IsRoundTimeExpired());
 }
 
 void AP48SurvivalGameMode::NotifyPlayerEliminated(AP48PlayerState* EliminatedPlayer)
@@ -104,7 +104,7 @@ void AP48SurvivalGameMode::CheckRoundEndCondition()
 {
 	AP48GameStateBase* GS = GetGameState<AP48GameStateBase>();
 	if (!HasAuthority() || !IsValid(GS) || !IsValid(MatchFlowRule)
-		|| GS->MatchPhase != EP48MatchPhase::Playing)
+		|| GS->MatchPhase != EP48MatchPhase::Playing || GS->HasRoundResult())
 	{
 		bRoundEndCheck = false;
 		return;
@@ -131,6 +131,9 @@ void AP48SurvivalGameMode::CheckRoundEndCondition()
 		bRoundEndCheck = false;
 		return;
 	}
+
+	// 결과 확정 전에 예약된 검사를 취소하여 사망과 시간 만료의 중복 반영 방지
+	ClearMatchTimers();
 
 	// 복제 상태 변경과 승수 반영은 서버 GameMode에서 처리
 	if (Round.Outcome == EP48RoundOutcome::Winner)
@@ -186,7 +189,19 @@ void AP48SurvivalGameMode::StartMatch()
 	ResetParticipantsForRound();
 	Super::StartMatch();
 
+	// 일반 라운드와 결정전 모두 Playing 진입 시 같은 제한 시간 적용
+	const float Duration = FMath::Max(1.0f, RoundTimeLimit);
+	GS->SetRoundEndServerTime(GS->GetServerWorldTimeSeconds() + Duration);
+	GetWorldTimerManager().SetTimer(
+		RoundTimeLimitTimerHandle, this, &ThisClass::HandleRoundTimeExpired, Duration, false);
+
 	UE_LOG(LogTemp, Warning, TEXT("[Server] Survival round started: Alive participants = %d"), EvaluateRound().AliveCount);
+}
+
+void AP48SurvivalGameMode::HandleRoundTimeExpired()
+{
+	// 기존 지연 검사 경로에서 생존자와 시간 만료 여부를 규칙에 함께 전달
+	RoundEndCheck();
 }
 
 void AP48SurvivalGameMode::Logout(AController* Exit)
@@ -240,10 +255,6 @@ void AP48SurvivalGameMode::ApplyFlowResult(const FP48MatchFlowResult& Result)
 	case EP48MatchFlowAction::StartTiebreaker:
 		GS->SetTiebreaker(true);
 		UE_LOG(LogTemp, Log, TEXT("[Server] Tiebreaker scheduled"));
-		StartRoundEnd();
-		break;
-	case EP48MatchFlowAction::ReplayTiebreaker:
-		UE_LOG(LogTemp, Log, TEXT("[Server] Tiebreaker draw: Scheduling replay"));
 		StartRoundEnd();
 		break;
 	case EP48MatchFlowAction::NextRound:
@@ -300,6 +311,11 @@ void AP48SurvivalGameMode::ClearMatchTimers()
 	Super::ClearMatchTimers();
 	GetWorldTimerManager().ClearTimer(RoundEndCheckTimerHandle);
 	GetWorldTimerManager().ClearTimer(LogoutCheckTimerHandle);
+	GetWorldTimerManager().ClearTimer(RoundTimeLimitTimerHandle);
+	if (AP48GameStateBase* GS = GetGameState<AP48GameStateBase>())
+	{
+		GS->SetRoundEndServerTime(0.0);
+	}
 	bRoundEndCheck = false;
 }
 

@@ -20,6 +20,6 @@ class PROJECT48_API UP48RoundWinCondition : public UObject
 
 public:
 	// 현재 라운드의 진행 중, 승리, 무승부 여부 판정
-	virtual FP48RoundResult Evaluate(const TArray<AP48PlayerState*>& Participants) const
+	virtual FP48RoundResult Evaluate(const TArray<AP48PlayerState*>& Participants, bool bTimeExpired) const
 		PURE_VIRTUAL(UP48RoundWinCondition::Evaluate, return FP48RoundResult(););
 };

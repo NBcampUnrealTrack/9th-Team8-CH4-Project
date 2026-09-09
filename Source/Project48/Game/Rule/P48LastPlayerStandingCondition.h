@@ -15,5 +15,5 @@ class PROJECT48_API UP48LastPlayerStandingCondition : public UP48RoundWinConditi
 	GENERATED_BODY()
 
 public:
-	virtual FP48RoundResult Evaluate(const TArray<AP48PlayerState*>& Participants) const override;
+	virtual FP48RoundResult Evaluate(const TArray<AP48PlayerState*>& Participants, bool bTimeExpired) const override;
 };
