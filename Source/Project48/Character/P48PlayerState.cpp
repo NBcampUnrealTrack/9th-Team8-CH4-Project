@@ -3,6 +3,8 @@
 
 #include "P48PlayerState.h"
 
+#include "Project48/Game/P48SurvivalGameMode.h"
+
 #include "Net/UnrealNetwork.h"
 
 void AP48PlayerState::GetLifetimeReplicatedProps(
@@ -14,6 +16,7 @@ void AP48PlayerState::GetLifetimeReplicatedProps(
 	DOREPLIFETIME(AP48PlayerState, bIsAlive);
 	DOREPLIFETIME(AP48PlayerState, bIsMatchParticipant);
 	DOREPLIFETIME(AP48PlayerState, RoundWinCount);
+	DOREPLIFETIME(AP48PlayerState, StunCount);
 }
 
 void AP48PlayerState::SetReady(bool bNewReady)
@@ -91,7 +94,8 @@ void AP48PlayerState::ResetForNewRound()
 	}
 
 	SetAlive(bIsMatchParticipant);
-
+	ResetStunCount();
+	
 	UE_LOG(LogTemp,Warning,TEXT("[Server] %s reset for new round"),*GetPlayerName());
 }
 
@@ -105,8 +109,42 @@ void AP48PlayerState::ResetForNewMatch()
 	SetReady(false);
 	SetAlive(false);
 	SetMatchParticipant(false);
-
+	
 	RoundWinCount = 0;
 
 	UE_LOG(LogTemp,Warning,TEXT("[Server] %s reset for new match"),*GetPlayerName());
+}
+
+void AP48PlayerState::AddStunCount(int32 Amount)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+	StunCount += Amount;
+}
+
+void AP48PlayerState::ResetStunCount()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+	StunCount = 0;
+}
+
+void AP48PlayerState::OnDeath()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+	
+	bIsAlive = false;
+	
+	if (AP48SurvivalGameMode* SurvivalGM = GetWorld()->GetAuthGameMode<AP48SurvivalGameMode>())
+	{
+		SurvivalGM->NotifyPlayerEliminated(this);
+		UE_LOG(LogTemp, Error, TEXT("[%s] is died."), *GetName());
+	}
 }
