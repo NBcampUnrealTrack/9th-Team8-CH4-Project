@@ -6,6 +6,8 @@
 #include "GameFramework/GameModeBase.h"
 #include "P48GameModeBase.generated.h"
 
+class AP48PlayerState;
+
 /**
  * @brief 서버 전용 판정과 게임 진행을 담당하는 클래스
  */
@@ -51,6 +53,12 @@ protected:
 	virtual void StartMatch();
 	void StartRoundEnd();
 	virtual void PrepareNextRound();
+
+	bool bWaitingForRoundMap = false;
+	FTimerHandle RoundMapPreparationTimerHandle;
+	void TryFinishRoundMapPreparation();
+	virtual bool IsRoundSpawnParticipant(const AP48PlayerState* Player) const;
+
 
 	// 다음 라운드 준비 시 일반 라운드 번호 증가 여부
 	virtual bool ShouldAdvanceRound() const { return true; }
