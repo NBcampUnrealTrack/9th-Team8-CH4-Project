@@ -17,7 +17,7 @@ public:
 	UP48BridgeNetworkSyncComponent();
 
 	void ResetInterpolation();
-	void BuildNetworkState(const TArray<FP48BridgePlankNode>& Nodes, int32 GenerationId, uint16 SimulationFrame, FP48BridgeNetworkState& OutState) const;
+	void BuildNetworkState(const TArray<FP48BridgePlankNode>& Nodes, int32 GenerationId, uint16 SimulationFrame, int32 MaxControlPoints, FP48BridgeNetworkState& OutState) const;
 	void ReceiveNetworkState(const FP48BridgeNetworkState& State);
 	bool CalculateClientNodes(float DeltaSeconds, const TArray<FP48BridgePlankNode>& RestNodes, TArray<FP48BridgePlankNode>& OutNodes);
 

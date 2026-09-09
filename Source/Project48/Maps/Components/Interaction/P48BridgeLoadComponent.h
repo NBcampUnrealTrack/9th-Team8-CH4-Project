@@ -4,7 +4,7 @@
 #include "Components/ActorComponent.h"
 #include "P48BridgeLoadComponent.generated.h"
 
-class UBoxComponent;
+class UStaticMeshComponent;
 
 /** 물리 컴포넌트로 전달할 한 지점의 지속 하중 값입니다. */
 struct FP48BridgeLoadValue
@@ -22,5 +22,5 @@ class PROJECT48_API UP48BridgeLoadComponent : public UActorComponent
 public:
 	UP48BridgeLoadComponent();
 
-	void CalculateStandingLoads(const TArray<TObjectPtr<UBoxComponent>>& Planks, TArray<FP48BridgeLoadValue>& OutLoads) const;
+	void CalculateStandingLoads(const TArray<TObjectPtr<UStaticMeshComponent>>& Planks, TArray<FP48BridgeLoadValue>& OutLoads) const;
 };

@@ -6,9 +6,25 @@
 namespace P48BridgeNetworkSync
 {
 	constexpr float FixedSimulationDeltaTime = 1.0f / 30.0f;
-	constexpr float MaxPredictionTime = 0.10f;
+	constexpr float MaxPredictionTime = 0.15f;
 	constexpr float CorrectionSpeed = 18.0f;
-	constexpr float PredictionDecay = 4.0f;
+	constexpr float PredictionDecay = 1.5f;
+
+	FVector InterpolateControls(const TArray<FVector>& Controls, const int32 SourceIndex, const int32 SourceCount)
+	{
+		if (Controls.IsEmpty() || SourceCount < 2)
+		{
+			return FVector::ZeroVector;
+		}
+		if (Controls.Num() == 1)
+		{
+			return Controls[0];
+		}
+		const float ControlPosition = static_cast<float>(SourceIndex) * static_cast<float>(Controls.Num() - 1) / static_cast<float>(SourceCount - 1);
+		const int32 Lower = FMath::Clamp(FMath::FloorToInt(ControlPosition), 0, Controls.Num() - 1);
+		const int32 Upper = FMath::Min(Lower + 1, Controls.Num() - 1);
+		return FMath::Lerp(Controls[Lower], Controls[Upper], ControlPosition - Lower);
+	}
 }
 
 UP48BridgeNetworkSyncComponent::UP48BridgeNetworkSyncComponent()
@@ -34,19 +50,22 @@ void UP48BridgeNetworkSyncComponent::ResetInterpolation()
 	bHasNetworkState = false;
 }
 
-void UP48BridgeNetworkSyncComponent::BuildNetworkState(const TArray<FP48BridgePlankNode>& Nodes, int32 GenerationId, uint16 SimulationFrame, FP48BridgeNetworkState& OutState) const
+void UP48BridgeNetworkSyncComponent::BuildNetworkState(const TArray<FP48BridgePlankNode>& Nodes, int32 GenerationId, uint16 SimulationFrame, const int32 MaxControlPoints, FP48BridgeNetworkState& OutState) const
 {
 	OutState.GenerationId = GenerationId;
 	OutState.SimulationFrame = SimulationFrame;
 	OutState.ServerTimeSeconds = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
 	OutState.SourceNodeCount = Nodes.Num();
 
-	OutState.Nodes.Reset();
-	OutState.Nodes.Reserve(Nodes.Num());
+	const int32 ControlCount = FMath::Clamp(MaxControlPoints, 2, Nodes.Num());
+	OutState.ControlPoints.Reset();
+	OutState.ControlPoints.Reserve(ControlCount);
 
-	for (const FP48BridgePlankNode& Node : Nodes)
+	for (int32 ControlIndex = 0; ControlIndex < ControlCount; ++ControlIndex)
 	{
-		FP48BridgeNetworkNodeState& NetworkNode = OutState.Nodes.Emplace_GetRef();
+		const int32 SourceIndex = FMath::RoundToInt(static_cast<float>(ControlIndex) * static_cast<float>(Nodes.Num() - 1) / static_cast<float>(ControlCount - 1));
+		const FP48BridgePlankNode& Node = Nodes[SourceIndex];
+		FP48BridgeNetworkNodeState& NetworkNode = OutState.ControlPoints.Emplace_GetRef();
 
 		NetworkNode.LeftOffset = Node.CurrentLeft - Node.RestLeft;
 		NetworkNode.RightOffset = Node.CurrentRight - Node.RestRight;
@@ -63,7 +82,7 @@ void UP48BridgeNetworkSyncComponent::BuildNetworkState(const TArray<FP48BridgePl
 
 void UP48BridgeNetworkSyncComponent::ReceiveNetworkState(const FP48BridgeNetworkState& State)
 {
-	if (State.SourceNodeCount < 2 || State.Nodes.Num() != State.SourceNodeCount)
+	if (State.SourceNodeCount < 2 || State.ControlPoints.Num() < 2 || State.ControlPoints.Num() > State.SourceNodeCount)
 	{
 		return;
 	}
@@ -80,24 +99,29 @@ void UP48BridgeNetworkSyncComponent::ReceiveNetworkState(const FP48BridgeNetwork
 		State.GenerationId != ActiveGenerationId ||
 		State.SourceNodeCount != SourceNodeCount;
 
-	TargetLeftOffsets.SetNum(State.Nodes.Num());
-	TargetRightOffsets.SetNum(State.Nodes.Num());
-	TargetLeftVelocities.SetNum(State.Nodes.Num());
-	TargetRightVelocities.SetNum(State.Nodes.Num());
+	TargetLeftOffsets.SetNum(State.ControlPoints.Num());
+	TargetRightOffsets.SetNum(State.ControlPoints.Num());
+	TargetLeftVelocities.SetNum(State.ControlPoints.Num());
+	TargetRightVelocities.SetNum(State.ControlPoints.Num());
 
-	for (int32 Index = 0; Index < State.Nodes.Num(); ++Index)
+	for (int32 Index = 0; Index < State.ControlPoints.Num(); ++Index)
 	{
-		TargetLeftOffsets[Index] = State.Nodes[Index].LeftOffset;
-		TargetRightOffsets[Index] = State.Nodes[Index].RightOffset;
+		TargetLeftOffsets[Index] = State.ControlPoints[Index].LeftOffset;
+		TargetRightOffsets[Index] = State.ControlPoints[Index].RightOffset;
 
-		TargetLeftVelocities[Index] = State.Nodes[Index].LeftVelocity;
-		TargetRightVelocities[Index] = State.Nodes[Index].RightVelocity;
+		TargetLeftVelocities[Index] = State.ControlPoints[Index].LeftVelocity;
+		TargetRightVelocities[Index] = State.ControlPoints[Index].RightVelocity;
 	}
 
 	if (bReset)
 	{
-		CurrentLeftOffsets = TargetLeftOffsets;
-		CurrentRightOffsets = TargetRightOffsets;
+		CurrentLeftOffsets.SetNum(State.SourceNodeCount);
+		CurrentRightOffsets.SetNum(State.SourceNodeCount);
+		for (int32 SourceIndex = 0; SourceIndex < State.SourceNodeCount; ++SourceIndex)
+		{
+			CurrentLeftOffsets[SourceIndex] = P48BridgeNetworkSync::InterpolateControls(TargetLeftOffsets, SourceIndex, State.SourceNodeCount);
+			CurrentRightOffsets[SourceIndex] = P48BridgeNetworkSync::InterpolateControls(TargetRightOffsets, SourceIndex, State.SourceNodeCount);
+		}
 	}
 
 	LastServerTimeSeconds = State.ServerTimeSeconds;
@@ -117,7 +141,8 @@ bool UP48BridgeNetworkSyncComponent::CalculateClientNodes(const float DeltaSecon
 {
     if (!bHasNetworkState ||
         RestNodes.Num() != SourceNodeCount ||
-        TargetLeftOffsets.Num() != SourceNodeCount)
+        TargetLeftOffsets.Num() < 2 ||
+		CurrentLeftOffsets.Num() != SourceNodeCount)
     {
         return false;
     }
@@ -130,14 +155,14 @@ bool UP48BridgeNetworkSyncComponent::CalculateClientNodes(const float DeltaSecon
             0.0f,
             P48BridgeNetworkSync::MaxPredictionTime);
 
-    float VelocityScale = 1.0f;
+    float PoseDecay = 1.0f;
 
     if (StateAge > P48BridgeNetworkSync::MaxPredictionTime)
     {
         const float ExcessTime =
             StateAge - P48BridgeNetworkSync::MaxPredictionTime;
 
-        VelocityScale =
+        PoseDecay =
             FMath::Exp(
                 -P48BridgeNetworkSync::PredictionDecay *
                 ExcessTime);
@@ -151,17 +176,13 @@ bool UP48BridgeNetworkSyncComponent::CalculateClientNodes(const float DeltaSecon
 
     for (int32 Index = 0; Index < SourceNodeCount; ++Index)
     {
-        const FVector DesiredLeft =
-            TargetLeftOffsets[Index] +
-            TargetLeftVelocities[Index] *
-            PredictionTime *
-            VelocityScale;
+		const FVector TargetLeft = P48BridgeNetworkSync::InterpolateControls(TargetLeftOffsets, Index, SourceNodeCount);
+		const FVector TargetRight = P48BridgeNetworkSync::InterpolateControls(TargetRightOffsets, Index, SourceNodeCount);
+		const FVector LeftVelocity = P48BridgeNetworkSync::InterpolateControls(TargetLeftVelocities, Index, SourceNodeCount);
+		const FVector RightVelocity = P48BridgeNetworkSync::InterpolateControls(TargetRightVelocities, Index, SourceNodeCount);
+		const FVector DesiredLeft = (TargetLeft + LeftVelocity * PredictionTime) * PoseDecay;
 
-        const FVector DesiredRight =
-            TargetRightOffsets[Index] +
-            TargetRightVelocities[Index] *
-            PredictionTime *
-            VelocityScale;
+		const FVector DesiredRight = (TargetRight + RightVelocity * PredictionTime) * PoseDecay;
 
         CurrentLeftOffsets[Index] =
             FMath::Lerp(

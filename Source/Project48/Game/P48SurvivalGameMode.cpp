@@ -1,88 +1,89 @@
 // P48SurvivalGameMode.cpp
 
-
 #include "P48SurvivalGameMode.h"
 
 #include "P48GameStateBase.h"
 #include "Project48/Character/P48PlayerState.h"
+#include "Rule/P48BestOfRoundsMatchFlowRule.h"
+#include "Rule/P48LastPlayerStandingCondition.h"
+#include "TimerManager.h"
 
-
-int32 AP48SurvivalGameMode::GetAliveParticipantCount() const
+AP48SurvivalGameMode::AP48SurvivalGameMode()
 {
-	const AP48GameStateBase* P48GameState = GetGameState<AP48GameStateBase>();
-	if (IsValid(P48GameState) == false)
-	{
-		return 0;
-	}
-
-	int32 AliveCount = 0;
-
-	for (APlayerState* PlayerState : P48GameState->PlayerArray)
-	{
-		const AP48PlayerState* P48PlayerState = Cast<AP48PlayerState>(PlayerState);
-		if (IsCurrentRoundParticipant(P48PlayerState)
-			&& P48PlayerState->IsAlive())
-		{
-			AliveCount++;
-		}
-	}
-
-	return AliveCount;
+	MatchFlowRuleClass = UP48BestOfRoundsMatchFlowRule::StaticClass();
+	RoundWinConditionClass = UP48LastPlayerStandingCondition::StaticClass();
 }
 
-AP48PlayerState* AP48SurvivalGameMode::LastAliveParticipant() const
+void AP48SurvivalGameMode::InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage)
 {
-	const AP48GameStateBase* P48GameState = GetGameState<AP48GameStateBase>();
-	if (IsValid(P48GameState) == false)
+	Super::InitGame(MapName, Options, ErrorMessage);
+
+	if (!HasAuthority())
 	{
-		return nullptr;
+		return;
 	}
 
-	AP48PlayerState* LastAlivePlayer = nullptr;
-	int32 AliveCount = 0;
-
-	for (APlayerState* PlayerState : P48GameState->PlayerArray)
+	// 플레이어 접속과 카운트다운 전에 규칙 객체 생성
+	UClass* FlowClass = MatchFlowRuleClass.Get();
+	UClass* ConditionClass = RoundWinConditionClass.Get();
+	if (!FlowClass || FlowClass->HasAnyClassFlags(CLASS_Abstract))
 	{
-		AP48PlayerState* P48PlayerState = Cast<AP48PlayerState>(PlayerState);
-		if (IsCurrentRoundParticipant(P48PlayerState)
-			&& P48PlayerState->IsAlive())
+		FlowClass = UP48BestOfRoundsMatchFlowRule::StaticClass();
+	}
+	if (!ConditionClass || ConditionClass->HasAnyClassFlags(CLASS_Abstract))
+	{
+		ConditionClass = UP48LastPlayerStandingCondition::StaticClass();
+	}
+
+	MatchFlowRule = NewObject<UP48MatchFlowRule>(this, FlowClass);
+	RoundWinCondition = NewObject<UP48RoundWinCondition>(this, ConditionClass);
+	MatchFlowRule->Initialize(DefaultRoundCount);
+}
+
+bool AP48SurvivalGameMode::IsCurrentRoundParticipant(const AP48PlayerState* Player) const
+{
+	const AP48GameStateBase* GS = GetGameState<AP48GameStateBase>();
+	return IsValid(GS) && IsValid(MatchFlowRule) && MatchFlowRule->IsRoundParticipant(*GS, Player);
+}
+
+bool AP48SurvivalGameMode::IsTiebreakerParticipant(const AP48PlayerState* Player) const
+{
+	return IsValid(MatchFlowRule) && MatchFlowRule->IsTiebreakerParticipant(Player);
+}
+
+FP48RoundResult AP48SurvivalGameMode::EvaluateRound() const
+{
+	const AP48GameStateBase* GS = GetGameState<AP48GameStateBase>();
+	if (!IsValid(GS) || !IsValid(MatchFlowRule) || !IsValid(RoundWinCondition))
+	{
+		return {};
+	}
+
+	TArray<AP48PlayerState*> Participants;
+	for (APlayerState* PlayerState : GS->PlayerArray)
+	{
+		AP48PlayerState* Player = Cast<AP48PlayerState>(PlayerState);
+		if (MatchFlowRule->IsRoundParticipant(*GS, Player))
 		{
-			LastAlivePlayer = P48PlayerState;
-			AliveCount++;
+			Participants.Add(Player);
 		}
 	}
 
-	return AliveCount == 1 ? LastAlivePlayer : nullptr;
+	return RoundWinCondition->Evaluate(Participants, GS->IsRoundTimeExpired());
 }
 
 void AP48SurvivalGameMode::NotifyPlayerEliminated(AP48PlayerState* EliminatedPlayer)
 {
-	if (HasAuthority() == false)
-	{
-		return;
-	}
-
-	AP48GameStateBase* P48GameState = GetGameState<AP48GameStateBase>();
-	if (IsValid(P48GameState) == false
-		|| P48GameState->MatchPhase != EP48MatchPhase::Playing)
-	{
-		return;
-	}
-
-	if (!IsCurrentRoundParticipant(EliminatedPlayer)
-		|| EliminatedPlayer->IsAlive() == false)
+	AP48GameStateBase* GS = GetGameState<AP48GameStateBase>();
+	if (!HasAuthority() || !IsValid(GS) || GS->MatchPhase != EP48MatchPhase::Playing
+		|| !IsCurrentRoundParticipant(EliminatedPlayer) || !EliminatedPlayer->IsAlive())
 	{
 		return;
 	}
 
 	EliminatedPlayer->SetAlive(false);
-
-	UE_LOG(
-		LogTemp,
-		Warning,
-		TEXT("[Server] Player eliminated: %s, Alive participants: %d"),
-		*EliminatedPlayer->GetPlayerName(),
-		GetAliveParticipantCount());
+	UE_LOG(LogTemp, Warning, TEXT("[Server] Player eliminated: %s, Alive participants: %d"),
+		*EliminatedPlayer->GetPlayerName(), EvaluateRound().AliveCount);
 
 	RoundEndCheck();
 }
@@ -95,132 +96,79 @@ void AP48SurvivalGameMode::RoundEndCheck()
 	}
 
 	bRoundEndCheck = true;
-
 	GetWorldTimerManager().SetTimer(
-		RoundEndCheckTimerHandle,
-		this,
-		&ThisClass::CheckRoundEndCondition,
-		RoundEndCheckDelay,
-		false);
+		RoundEndCheckTimerHandle, this, &ThisClass::CheckRoundEndCondition, RoundEndCheckDelay, false);
 }
 
 void AP48SurvivalGameMode::CheckRoundEndCondition()
 {
-	if (HasAuthority() == false)
-	{
-		bRoundEndCheck = false;
-		return;
-	}
-
-	AP48GameStateBase* P48GameState = GetGameState<AP48GameStateBase>();
-
-	if (IsValid(P48GameState) == false || P48GameState->MatchPhase != EP48MatchPhase::Playing)
+	AP48GameStateBase* GS = GetGameState<AP48GameStateBase>();
+	if (!HasAuthority() || !IsValid(GS) || !IsValid(MatchFlowRule)
+		|| GS->MatchPhase != EP48MatchPhase::Playing || GS->HasRoundResult())
 	{
 		bRoundEndCheck = false;
 		return;
 	}
 
 	// 연속 퇴장을 모으는 동안 기존 사망 판정이 먼저 승자를 확정하지 않도록 한다.
-	if (P48GameState->IsTiebreaker()
-		&& GetWorldTimerManager().IsTimerActive(TiebreakerLogoutTimerHandle))
+	if (GetWorldTimerManager().IsTimerActive(LogoutCheckTimerHandle))
 	{
 		bRoundEndCheck = false;
 		return;
 	}
 
-	const int32 AliveCount = GetAliveParticipantCount();
-
-	UE_LOG(
-		LogTemp,
-		Warning,
-		TEXT("[Server] Round end check: Alive participants = %d"),
-		AliveCount);
-
-	if (AliveCount > 1)
+	const FP48RoundResult Round = EvaluateRound();
+	UE_LOG(LogTemp, Warning, TEXT("[Server] Round end check: Alive participants = %d"), Round.AliveCount);
+	if (Round.Outcome == EP48RoundOutcome::InProgress)
 	{
 		bRoundEndCheck = false;
 		return;
 	}
 
-	FinishSurvivalRound(AliveCount == 1 ? LastAliveParticipant() : nullptr);
-}
-
-void AP48SurvivalGameMode::FinishSurvivalRound(AP48PlayerState* Winner)
-{
-	AP48GameStateBase* P48GameState = GetGameState<AP48GameStateBase>();
-	if (HasAuthority() == false
-		|| IsValid(P48GameState) == false
-		|| P48GameState->MatchPhase != EP48MatchPhase::Playing)
+	const FP48MatchFlowResult Flow = MatchFlowRule->ResolveRound(*GS, Round);
+	if (Flow.Action == EP48MatchFlowAction::None)
 	{
+		bRoundEndCheck = false;
 		return;
 	}
 
-	// 결정전은 일반 승수 집계 없이 생존자를 최종 승자로 처리한다.
-	if (P48GameState->IsTiebreaker())
-	{
-		if (IsValid(Winner))
-		{
-			P48GameState->SetRoundWinner(Winner);
-			UE_LOG(LogTemp, Log, TEXT("[Server] Tiebreaker winner: %s"), *Winner->GetPlayerName());
-			StartMatchEnd(Winner);
-		}
-		else
-		{
-			P48GameState->SetRoundDraw();
-			UE_LOG(LogTemp, Log, TEXT("[Server] Tiebreaker draw: Scheduling replay"));
-			StartRoundEnd();
-		}
-		return;
-	}
+	// 결과 확정 전에 예약된 검사를 취소하여 사망과 시간 만료의 중복 반영 방지
+	ClearMatchTimers();
 
-	if (IsValid(Winner))
+	// 복제 상태 변경과 승수 반영은 서버 GameMode에서 처리
+	if (Round.Outcome == EP48RoundOutcome::Winner)
 	{
-		P48GameState->SetRoundWinner(Winner); //라운드 승자
-		Winner->AddRoundWin();
+		GS->SetRoundWinner(Round.Winner);
+		if (Flow.bAwardRoundWin)
+		{
+			Round.Winner->AddRoundWin();
+		}
 	}
 	else
 	{
-		P48GameState->SetRoundDraw(); //무승부
+		GS->SetRoundDraw();
 	}
 
-	if (!HasFinishedDefaultRounds())
-	{
-		StartRoundEnd();
-		return;
-	}
-
-	if (TryFinishMatchWithSingleLeader())
-	{
-		return;
-	}
-
-	const TArray<AP48PlayerState*> TopPlayers = FindTopRoundWinners();
-	if (TopPlayers.Num() > 1)
-	{
-		StartTiebreaker(TopPlayers);
-		return;
-	}
-
-	StartMatchDraw();
+	ApplyFlowResult(Flow);
 }
 
 void AP48SurvivalGameMode::ResetParticipantsForRound()
 {
-	AP48GameStateBase* P48GameState = GetGameState<AP48GameStateBase>();
-	if (IsValid(P48GameState) == false)
+	AP48GameStateBase* GS = GetGameState<AP48GameStateBase>();
+	if (!IsValid(GS))
 	{
 		return;
 	}
 
-	for (APlayerState* PlayerState : P48GameState->PlayerArray)
+	for (APlayerState* PlayerState : GS->PlayerArray)
 	{
-		AP48PlayerState* P48PlayerState = Cast<AP48PlayerState>(PlayerState);
-		if (IsValid(P48PlayerState))
+		AP48PlayerState* Player = Cast<AP48PlayerState>(PlayerState);
+		if (IsValid(Player))
 		{
-			P48PlayerState->ResetForNewRound();
-			if (!IsCurrentRoundParticipant(P48PlayerState))
+			Player->ResetForNewRound();
+			if (!IsCurrentRoundParticipant(Player))
 			{
-				P48PlayerState->SetAlive(false);
+				Player->SetAlive(false);
 			}
 		}
 	}
@@ -228,341 +176,158 @@ void AP48SurvivalGameMode::ResetParticipantsForRound()
 
 void AP48SurvivalGameMode::StartMatch()
 {
-	AP48GameStateBase* P48GameState = GetGameState<AP48GameStateBase>();
-
-	if (!HasAuthority() || !IsValid(P48GameState) || P48GameState->MatchPhase != EP48MatchPhase::Countdown)
+	AP48GameStateBase* GS = GetGameState<AP48GameStateBase>();
+	if (!HasAuthority() || !IsValid(GS) || !IsValid(MatchFlowRule) || !IsValid(RoundWinCondition)
+		|| GS->MatchPhase != EP48MatchPhase::Countdown)
 	{
 		return;
 	}
 
 	GetWorldTimerManager().ClearTimer(RoundEndCheckTimerHandle);
 	bRoundEndCheck = false;
-
-	P48GameState->ResetRoundResult();
+	GS->ResetRoundResult();
 	ResetParticipantsForRound();
 	Super::StartMatch();
 
-	UE_LOG(
-		LogTemp,
-		Warning,
-		TEXT("[Server] Survival round started: Alive participants = %d"),
-		GetAliveParticipantCount());
+	// 일반 라운드와 결정전 모두 Playing 진입 시 같은 제한 시간 적용
+	const float Duration = FMath::Max(1.0f, RoundTimeLimit);
+	GS->SetRoundEndServerTime(GS->GetServerWorldTimeSeconds() + Duration);
+	GetWorldTimerManager().SetTimer(
+		RoundTimeLimitTimerHandle, this, &ThisClass::HandleRoundTimeExpired, Duration, false);
+
+	UE_LOG(LogTemp, Warning, TEXT("[Server] Survival round started: Alive participants = %d"), EvaluateRound().AliveCount);
 }
 
-void AP48SurvivalGameMode::StartMatchEnd(AP48PlayerState* Winner)
+void AP48SurvivalGameMode::HandleRoundTimeExpired()
 {
-	AP48GameStateBase* GS = GetGameState<AP48GameStateBase>();
-	if (!HasAuthority() || !IsValid(GS) || !IsValid(Winner))
-	{
-		return;
-	}
-
-	const bool bPlaying = GS->MatchPhase == EP48MatchPhase::Playing;
-	const bool bTiebreakerPreparation = GS->IsTiebreaker()
-		&& (GS->MatchPhase == EP48MatchPhase::RoundEnd
-			|| GS->MatchPhase == EP48MatchPhase::Countdown);
-	if (!bPlaying && !bTiebreakerPreparation)
-	{
-		return;
-	}
-
-	// 매치 종료시 타이머 정리
-	GetWorldTimerManager().ClearTimer(CountdownTimerHandle);
-	GetWorldTimerManager().ClearTimer(RoundEndTimerHandle);
-	GetWorldTimerManager().ClearTimer(RoundEndCheckTimerHandle);
-	GetWorldTimerManager().ClearTimer(TiebreakerLogoutTimerHandle);
-	bRoundEndCheck = false;
-
-	GS->SetMatchWinner(Winner);
-	GS->SetTiebreaker(false);
-	TiebreakerParticipants.Reset();
-	GS->SetMatchPhase(EP48MatchPhase::MatchEnd);
-}
-
-void AP48SurvivalGameMode::StartMatchDraw()
-{
-	AP48GameStateBase* GS = GetGameState<AP48GameStateBase>();
-	if (!HasAuthority() || !IsValid(GS)
-		|| GS->MatchPhase == EP48MatchPhase::Waiting
-		|| GS->MatchPhase == EP48MatchPhase::MatchEnd)
-	{
-		return;
-	}
-
-	GetWorldTimerManager().ClearTimer(CountdownTimerHandle);
-	GetWorldTimerManager().ClearTimer(RoundEndTimerHandle);
-	GetWorldTimerManager().ClearTimer(RoundEndCheckTimerHandle);
-	GetWorldTimerManager().ClearTimer(TiebreakerLogoutTimerHandle);
-	bRoundEndCheck = false;
-
-	GS->ResetMatchResult();
-	GS->SetTiebreaker(false);
-	TiebreakerParticipants.Reset();
-	GS->SetMatchPhase(EP48MatchPhase::MatchEnd);
-	UE_LOG(LogTemp, Log, TEXT("[Server] Match ended in a draw"));
+	// 기존 지연 검사 경로에서 생존자와 시간 만료 여부를 규칙에 함께 전달
+	RoundEndCheck();
 }
 
 void AP48SurvivalGameMode::Logout(AController* Exit)
 {
 	AP48GameStateBase* GS = GetGameState<AP48GameStateBase>();
-	AP48PlayerState* ExitingPlayer = IsValid(Exit)
-		? Exit->GetPlayerState<AP48PlayerState>() : nullptr;
+	AP48PlayerState* Player = IsValid(Exit) ? Exit->GetPlayerState<AP48PlayerState>() : nullptr;
 
-	const bool bTiebreakerLogout = IsValid(GS)
-		&& GS->IsTiebreaker()
-		&& IsTiebreakerParticipant(ExitingPlayer);
-
-	if (bTiebreakerLogout)
+	// Super::Logout 호출 전에 퇴장자를 규칙의 참가자 목록에서 제거
+	const bool bCheckLogout = HasAuthority() && IsValid(GS) && IsValid(MatchFlowRule)
+		&& MatchFlowRule->RemoveParticipant(*GS, Player);
+	if (bCheckLogout)
 	{
-		// 이미 탈락한 참가자도 재경기 목록에서 제거한다.
-		ExitingPlayer->SetAlive(false);
-		TiebreakerParticipants.RemoveAll(
-			[ExitingPlayer](const TWeakObjectPtr<AP48PlayerState>& Participant)
-			{
-				return !Participant.IsValid() || Participant.Get() == ExitingPlayer;
-			});
-
-		UE_LOG(LogTemp, Log,
-			TEXT("[Server] Tiebreaker logout: Player=%s, Remaining=%d"),
-			*ExitingPlayer->GetPlayerName(), TiebreakerParticipants.Num());
+		Player->SetAlive(false);
 	}
-	else if (IsValid(GS)
-		&& GS->MatchPhase == EP48MatchPhase::Playing
-		&& IsCurrentRoundParticipant(ExitingPlayer)
-		&& ExitingPlayer->IsAlive())
+	else if (IsValid(GS) && GS->MatchPhase == EP48MatchPhase::Playing)
 	{
-		NotifyPlayerEliminated(ExitingPlayer);
+		NotifyPlayerEliminated(Player);
 	}
 
 	Super::Logout(Exit);
 
-	if (bTiebreakerLogout)
+	if (bCheckLogout)
 	{
 		GetWorldTimerManager().SetTimer(
-			TiebreakerLogoutTimerHandle,
-			this,
-			&ThisClass::CheckTiebreakerAfterLogout,
-			FMath::Max(0.01f, RoundEndCheckDelay),
-			false);
+			LogoutCheckTimerHandle, this, &ThisClass::CheckAfterLogout,
+			FMath::Max(0.01f, RoundEndCheckDelay), false);
 	}
 }
 
-void AP48SurvivalGameMode::CheckTiebreakerAfterLogout()
+void AP48SurvivalGameMode::CheckAfterLogout()
 {
 	AP48GameStateBase* GS = GetGameState<AP48GameStateBase>();
-	if (!HasAuthority() || !IsValid(GS) || !GS->IsTiebreaker())
+	if (!HasAuthority() || !IsValid(GS) || !IsValid(MatchFlowRule))
 	{
 		return;
 	}
 
-	if (GS->MatchPhase != EP48MatchPhase::RoundEnd
-		&& GS->MatchPhase != EP48MatchPhase::Countdown
-		&& GS->MatchPhase != EP48MatchPhase::Playing)
+	ApplyFlowResult(MatchFlowRule->ResolveLogout(*GS));
+}
+
+void AP48SurvivalGameMode::ApplyFlowResult(const FP48MatchFlowResult& Result)
+{
+	AP48GameStateBase* GS = GetGameState<AP48GameStateBase>();
+	if (!HasAuthority() || !IsValid(GS))
 	{
 		return;
 	}
 
-	TiebreakerParticipants.RemoveAll(
-		[](const TWeakObjectPtr<AP48PlayerState>& Participant)
+	switch (Result.Action)
+	{
+	case EP48MatchFlowAction::StartTiebreaker:
+		GS->SetTiebreaker(true);
+		UE_LOG(LogTemp, Log, TEXT("[Server] Tiebreaker scheduled"));
+		StartRoundEnd();
+		break;
+	case EP48MatchFlowAction::NextRound:
+		StartRoundEnd();
+		break;
+	case EP48MatchFlowAction::MatchWinner:
+		if (IsValid(Result.Winner))
 		{
-			const AP48PlayerState* Player = Participant.Get();
-			return !IsValid(Player) || !Player->IsMatchParticipant();
-		});
-
-	const int32 RemainingCount = TiebreakerParticipants.Num();
-	if (RemainingCount == 0)
-	{
-		UE_LOG(LogTemp, Log, TEXT("[Server] Tiebreaker ended: No participants remain"));
-		StartMatchDraw();
-		return;
-	}
-
-	if (RemainingCount == 1)
-	{
-		AP48PlayerState* Winner = TiebreakerParticipants[0].Get();
-		UE_LOG(LogTemp, Log, TEXT("[Server] Tiebreaker forfeit winner: %s"),
-			*Winner->GetPlayerName());
-		StartMatchEnd(Winner);
-		return;
-	}
-
-	if (GS->MatchPhase == EP48MatchPhase::Playing)
-	{
+			FinishMatch(Result.Winner);
+		}
+		break;
+	case EP48MatchFlowAction::MatchDraw:
+		FinishMatch(nullptr);
+		break;
+	case EP48MatchFlowAction::CheckRound:
 		RoundEndCheck();
+		break;
+	case EP48MatchFlowAction::None:
+		break;
 	}
 }
 
-bool AP48SurvivalGameMode::HasFinishedDefaultRounds() const
+void AP48SurvivalGameMode::FinishMatch(AP48PlayerState* Winner)
 {
-	const AP48GameStateBase* P48GameState = GetGameState<AP48GameStateBase>();
-	if (!IsValid(P48GameState))
+	AP48GameStateBase* GS = GetGameState<AP48GameStateBase>();
+	if (!HasAuthority() || !IsValid(GS)
+		|| GS->MatchPhase == EP48MatchPhase::Waiting || GS->MatchPhase == EP48MatchPhase::MatchEnd)
 	{
-		return false;
+		return;
 	}
 
-	const int32 RequiredRounds = FMath::Max(1, DefaultRoundCount);
+	// 승리와 무승부 모두 같은 경로에서 타이머 및 규칙 정보 정리
+	ClearMatchTimers();
+	if (IsValid(Winner))
+	{
+		GS->SetMatchWinner(Winner);
+	}
+	else
+	{
+		GS->ResetMatchResult();
+		UE_LOG(LogTemp, Log, TEXT("[Server] Match ended in a draw"));
+	}
 
-	return P48GameState->CurrentRound >= RequiredRounds;
+	GS->SetTiebreaker(false);
+	if (IsValid(MatchFlowRule))
+	{
+		MatchFlowRule->Reset();
+	}
+	GS->SetMatchPhase(EP48MatchPhase::MatchEnd);
 }
 
-TArray<AP48PlayerState*> AP48SurvivalGameMode::FindTopRoundWinners() const
+void AP48SurvivalGameMode::ClearMatchTimers()
 {
-	TArray<AP48PlayerState*> TopPlayers;
-
-	const AP48GameStateBase* P48GameState = GetGameState<AP48GameStateBase>();
-	if (!IsValid(P48GameState))
+	Super::ClearMatchTimers();
+	GetWorldTimerManager().ClearTimer(RoundEndCheckTimerHandle);
+	GetWorldTimerManager().ClearTimer(LogoutCheckTimerHandle);
+	GetWorldTimerManager().ClearTimer(RoundTimeLimitTimerHandle);
+	if (AP48GameStateBase* GS = GetGameState<AP48GameStateBase>())
 	{
-		return TopPlayers;
+		GS->SetRoundEndServerTime(0.0);
 	}
-
-	int32 MaxWins = -1;
-
-	for (APlayerState* PlayerState : P48GameState->PlayerArray)
-	{
-		AP48PlayerState* Player = Cast<AP48PlayerState>(PlayerState);
-
-		if (!IsValid(Player) || !Player->IsMatchParticipant()) // 유효한 Match 참가자만 비교
-		{
-			continue;
-		}
-
-		const int32 Wins = Player->GetRoundWinCount();
-
-		if (Wins > MaxWins)
-		{
-			// 더 높은 승수를 찾았으므로 기존 후보 교체
-			MaxWins = Wins;
-			TopPlayers.Reset();
-			TopPlayers.Add(Player);
-		}
-		else if (Wins == MaxWins)
-		{
-			TopPlayers.Add(Player); // 최다 승수가 같으면 공동 후보로 추가
-		}
-	}
-
-	return TopPlayers;
+	bRoundEndCheck = false;
 }
 
-bool AP48SurvivalGameMode::TryFinishMatchWithSingleLeader()
+bool AP48SurvivalGameMode::ShouldAdvanceRound() const
 {
-	AP48GameStateBase* P48GameState = GetGameState<AP48GameStateBase>();
-	if (!HasAuthority()
-		|| !IsValid(P48GameState)
-		|| P48GameState->MatchPhase != EP48MatchPhase::Playing)
-	{
-		return false;
-	}
-
-	// 일반 라운드를 모두 진행한 뒤에만 최종 승자 판정
-	if (!HasFinishedDefaultRounds())
-	{
-		return false;
-	}
-
-	const TArray<AP48PlayerState*> TopPlayers = FindTopRoundWinners();
-
-	// 동점이거나 참가자가 없으면 여기서는 종료하지 않음
-	if (TopPlayers.Num() != 1)
-	{
-		return false;
-	}
-
-	AP48PlayerState* Winner = TopPlayers[0];
-
-	UE_LOG(LogTemp, Log, TEXT("[Server] Single match leader: Player=%s, Wins=%d"),
-		*Winner->GetPlayerName(),
-		Winner->GetRoundWinCount());
-
-	StartMatchEnd(Winner);
-	return true;
-}
-
-bool AP48SurvivalGameMode::IsTiebreakerParticipant( const AP48PlayerState* Player) const
-{
-	if (!IsValid(Player))
-	{
-		return false;
-	}
-
-	for (const TWeakObjectPtr<AP48PlayerState>& Participant : TiebreakerParticipants)
-	{
-		if (Participant.Get() == Player)
-		{
-			return true;
-		}
-	}
-
-	return false;
-}
-
-bool AP48SurvivalGameMode::IsCurrentRoundParticipant(const AP48PlayerState* Player) const
-{
-	if (!IsValid(Player) || !Player->IsMatchParticipant())
-	{
-		return false;
-	}
-
 	const AP48GameStateBase* GS = GetGameState<AP48GameStateBase>();
-	if (!IsValid(GS))
-	{
-		return false;
-	}
-
-	return !GS->IsTiebreaker() || IsTiebreakerParticipant(Player);
+	return IsValid(GS) && IsValid(MatchFlowRule) && MatchFlowRule->ShouldAdvanceRound(*GS);
 }
 
-void AP48SurvivalGameMode::StartTiebreaker(
-	const TArray<AP48PlayerState*>& Participants)
+bool AP48SurvivalGameMode::ShouldCancelCountdown(int32 RemainingParticipants) const
 {
-	AP48GameStateBase* P48GameState = GetGameState<AP48GameStateBase>();
-	if (!HasAuthority()
-		|| !IsValid(P48GameState)
-		|| P48GameState->MatchPhase != EP48MatchPhase::Playing
-		|| P48GameState->IsTiebreaker())
-	{
-		return;
-	}
-
-	// 이전 목록을 비우고 유효한 참가자만 등록
-	TiebreakerParticipants.Reset();
-
-	for (AP48PlayerState* Player : Participants)
-	{
-		if (!IsValid(Player) || !Player->IsMatchParticipant())
-		{
-			continue;
-		}
-
-		TiebreakerParticipants.AddUnique(TWeakObjectPtr<AP48PlayerState>(Player));
-	}
-
-	if (TiebreakerParticipants.Num() < 2) // 결정전 시작에는 최소 2명이 필요
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[Server] Cannot start tiebreaker: Participants=%d"), TiebreakerParticipants.Num());
-
-		TiebreakerParticipants.Reset();
-		return;
-	}
-
-	// 클라이언트에도 결정전 상태 전달
-	P48GameState->SetTiebreaker(true);
-
-	UE_LOG(LogTemp, Log, TEXT("[Server] Tiebreaker scheduled: Participants=%d"), TiebreakerParticipants.Num());
-
-	for (const TWeakObjectPtr<AP48PlayerState>& Participant : TiebreakerParticipants)
-	{
-		if (AP48PlayerState* Player = Participant.Get())
-		{
-			UE_LOG(
-				LogTemp,
-				Log,
-				TEXT("[Server] Tiebreaker participant: %s, Wins=%d"),
-				*Player->GetPlayerName(),
-				Player->GetRoundWinCount());
-		}
-	}
-
-	// 기존 라운드 종료 흐름을 통해 결정전 준비
-	StartRoundEnd();
+	const AP48GameStateBase* GS = GetGameState<AP48GameStateBase>();
+	return IsValid(GS) && IsValid(MatchFlowRule)
+		&& MatchFlowRule->ShouldCancelCountdown(*GS, RemainingParticipants, MinPlayersToStart);
 }

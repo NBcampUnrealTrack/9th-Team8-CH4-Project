@@ -17,4 +17,8 @@ struct PROJECT48_API FP48BridgeConnectionRules
 	float MaxHeightDifference = 5000.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Bridge", meta = (ClampMin = "0.0", ClampMax = "89.0", Units = "deg"))
 	float MaxSlopeAngle = 25.0f;
+
+	/** 다리 방향과 섬 가장자리의 바깥 방향이 이루어도 되는 최대 각도입니다. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Bridge", meta = (ClampMin = "0.0", ClampMax = "89.0", Units = "deg"))
+	float MaxEndpointFacingAngle = 70.0f;
 };

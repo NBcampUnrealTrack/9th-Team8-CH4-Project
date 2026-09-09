@@ -28,11 +28,19 @@
 			"Enabled": true
 		},
 		{
+			"Name": "GameplayMessageRouter",
+			"Enabled": true
+		},
+		{
 			"Name": "OnlineSubsystemNull",
 			"Enabled": true
 		},
 		{
 			"Name": "PCG",
+			"Enabled": true
+		},
+		{
+			"Name": "SQLiteCore",
 			"Enabled": true
 		}
 	]

@@ -78,12 +78,18 @@ protected:
 	UPROPERTY()
 	FVector LastHitDirection = FVector::ZeroVector;
 	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Stun|Count")
+	int32 MaxStunCount = 3;
+	
 	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_PlayStunMontage(bool bPlay, FRotator TargetRotation = FRotator::ZeroRotator);
 	
 	void OnGroggyChanged(const struct FOnAttributeChangeData& Data);
 	
 	void OnStunTagChanged(const struct FGameplayTag CallbackTag, int32 NewCount);
+	
+	//Death
+	
 	
 	//UI
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="UI|Nickname")

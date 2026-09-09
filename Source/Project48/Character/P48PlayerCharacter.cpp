@@ -92,11 +92,6 @@ AP48PlayerCharacter::AP48PlayerCharacter()
 	RightHandHitbox->SetAbsolute(false, false, true);
 	RightHandHitbox->SetSphereRadius(RightHandHitboxRadius);
 	
-	/*RightHandHitbox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	RightHandHitbox->SetCollisionObjectType(ECC_WorldDynamic);
-	RightHandHitbox->SetCollisionResponseToAllChannels(ECR_Ignore);
-	RightHandHitbox->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);*/
-	
 	RightHandHitbox->SetCollisionProfileName(TEXT("OverlapAllDynamic"));
 	RightHandHitbox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	
@@ -136,6 +131,12 @@ void AP48PlayerCharacter::BeginPlay()
 		RightHandHitbox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 		RightHandHitbox->OnComponentBeginOverlap.AddDynamic(this, &AP48PlayerCharacter::OnRightHandOverlap);
 	}
+	
+	if (AP48PlayerState* PS = GetPlayerState<AP48PlayerState>())
+	{
+		PS->SetAlive(true);
+		PS->ResetStunCount();
+	}
 }
 
 void AP48PlayerCharacter::PossessedBy(AController* NewController)
@@ -159,6 +160,12 @@ void AP48PlayerCharacter::PossessedBy(AController* NewController)
 		AbilitySystemComponent->RegisterGameplayTagEvent(StunTag, EGameplayTagEventType::NewOrRemoved)
 		.AddUObject(this, &AP48PlayerCharacter::OnStunTagChanged);
 	}
+	
+	if (AP48PlayerState* PS = GetPlayerState<AP48PlayerState>())
+	{
+		PS->SetAlive(true);
+		PS->ResetStunCount();
+	}
 }
 
 void AP48PlayerCharacter::OnRep_PlayerState()
@@ -177,6 +184,12 @@ void AP48PlayerCharacter::OnRep_PlayerState()
 	const FGameplayTag StunTag = FGameplayTag::RequestGameplayTag(FName("State.Stunned"));
 	AbilitySystemComponent->RegisterGameplayTagEvent(StunTag, EGameplayTagEventType::NewOrRemoved)
 	.AddUObject(this, &AP48PlayerCharacter::OnStunTagChanged);
+	
+	if (AP48PlayerState* PS = GetPlayerState<AP48PlayerState>())
+	{
+		PS->SetAlive(true);
+		PS->ResetStunCount();
+	}
 }
 
 
@@ -247,11 +260,6 @@ void AP48PlayerCharacter::Look(const FInputActionValue& Value)
 
 void AP48PlayerCharacter::Run()
 {
-	if (GEngine)
-	{
-		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("Run"));
-	}
-	
 	if (!AbilitySystemComponent || !RunEffectClass)
 	{
 		return;	
@@ -285,11 +293,6 @@ void AP48PlayerCharacter::Run()
 
 void AP48PlayerCharacter::StopRun()
 {
-	if (GEngine)
-	{
-		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("Stop Run"));
-	}
-	
 	if (!AbilitySystemComponent || !RunEffectClass)
 	{
 		return;
@@ -399,10 +402,6 @@ void AP48PlayerCharacter::StartPunchAttack()
 	if (RightHandHitbox)
 	{
 		RightHandHitbox->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-		if (GEngine)
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("StartPunchAttack"));
-		}
 	}
 }
 
@@ -411,11 +410,6 @@ void AP48PlayerCharacter::StopPunchAttack()
 	if (RightHandHitbox)
 	{
 		RightHandHitbox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-		
-		if (GEngine)
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("EndPunchAttack"));
-		}
 	}
 	HitActorThisPunch.Empty();
 }
@@ -433,66 +427,59 @@ void AP48PlayerCharacter::OnRightHandOverlap(
 		return;
 	}
 	
-	if (GEngine)
+	if (!IsLocallyControlled())
 	{
-		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Blue, TEXT("Overlapp!"));
+		return;
+	}
+	
+	if (OtherComp != Cast<AP48PlayerCharacter>(OtherActor)->GetCapsuleComponent())
+	{
+		return;
 	}
 	
 	if (HitActorThisPunch.Contains(OtherActor))
 	{
 		return;
 	}
+	
 	HitActorThisPunch.Add(OtherActor);
 	
+	if (RightHandHitbox)
+	{
+		RightHandHitbox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	}
+	
+	const FVector HitDir = (OtherActor->GetActorLocation() - GetActorLocation()).GetSafeNormal();
+	const FVector HitLoc = RightHandHitbox ? RightHandHitbox->GetComponentLocation() : OtherActor->GetActorLocation();
+	
+	Server_ApplyHit(OtherActor, HitLoc, HitDir);
 	/*
 	if (HasAuthority())
 	{
 	ApplyGroggyDamage(OtherActor);
-	}
-	
 	if (AP48PlayerCharacter* TargetCharacter = Cast<AP48PlayerCharacter>(OtherActor))
 	{
-	const FVector HitDir = (TargetCharacter->GetActorLocation() - GetActorLocation()).GetSafeNormal();
-	const FVector HitLoc = RightHandHitbox ? RightHandHitbox->GetComponentLocation() : TargetCharacter->GetActorLocation();
-		
 	TargetCharacter->OnHit(HitLoc, HitDir, 60000.f);
-	}*/
-	
-	if (IsLocallyControlled())
-	{
-		const FVector HitDir = (OtherActor->GetActorLocation() - GetActorLocation().GetSafeNormal());
-		const FVector HitLoc = RightHandHitbox ? RightHandHitbox->GetComponentLocation() : OtherActor->GetActorLocation();
-		
-		if (HasAuthority())
-		{
-			ApplyGroggyDamage(OtherActor);
-			if (AP48PlayerCharacter* TargetCharacter = Cast<AP48PlayerCharacter>(OtherActor))
-			{
-				TargetCharacter->OnHit(HitLoc, HitDir, 60000.f);
-			}
-		}
-		else
-		{
-			Server_ApplyHit(OtherActor, HitLoc, HitDir);
-		}
 	}
+	}
+	else
+	{
+	Server_ApplyHit(OtherActor, HitLoc, HitDir);
+	}*/
 }
 
 void AP48PlayerCharacter::OnHit(const FVector& HitLocation, const FVector& HitDirection, float ImpulseStrength)
 {
-	UE_LOG(LogTemp, Warning, TEXT("OnHit"));
-	
 	const FVector Impulse = HitDirection.GetSafeNormal() * ImpulseStrength;
 	
 	LastHitDirection = HitDirection;
 	
-	if (HasAuthority())
+	if (AP48PlayerState* PS = GetPlayerState<AP48PlayerState>())
 	{
-		Multicast_OnHit(HitLocation, Impulse);
-	}
-	else
-	{
-		Multicast_OnHit(HitLocation, Impulse);
+		if (PS->IsAlive() && HasAuthority())
+		{
+			Multicast_OnHit(HitLocation, Impulse);
+		}
 	}
 }
 
@@ -512,8 +499,6 @@ void AP48PlayerCharacter::Multicast_OnHit_Implementation(const FVector& HitLocat
 void AP48PlayerCharacter::Server_Attack_Implementation()
 {
 	Multicast_PlayPunchMontage();
-	
-	UE_LOG(LogTemp, Warning, TEXT("[Server] Server_Attack"));
 }
 
 void AP48PlayerCharacter::Multicast_PlayPunchMontage_Implementation()
@@ -522,7 +507,6 @@ void AP48PlayerCharacter::Multicast_PlayPunchMontage_Implementation()
 	{
 		PlayAnimMontage(PunchAttackMontage);
 	}
-	UE_LOG(LogTemp, Warning, TEXT("[Multi] Multicast_PlayPunchMontage"));
 }
 
 void AP48PlayerCharacter::UpdateNickname()
@@ -548,8 +532,6 @@ void AP48PlayerCharacter::UpdateNickname()
 
 void AP48PlayerCharacter::ApplyGroggyDamage(AActor* HitActor)
 {
-	UE_LOG(LogTemp, Warning, TEXT("ApplyGroggyDamage"));
-	
 	if (!HasAuthority() || !IsValid(HitActor))
 	{
 		return;
@@ -557,14 +539,12 @@ void AP48PlayerCharacter::ApplyGroggyDamage(AActor* HitActor)
 	
 	if (!GroggyEffectClass)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("There is no GroggyEffectClass"));
 		return;
 	}
 	
 	UAbilitySystemComponent* TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(HitActor);
 	if (!TargetASC)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Target has no ASC"));
 		return;
 	}
 	
@@ -574,7 +554,6 @@ void AP48PlayerCharacter::ApplyGroggyDamage(AActor* HitActor)
 	FGameplayEffectSpecHandle SpecHandle = TargetASC->MakeOutgoingSpec(GroggyEffectClass, 1.0f, ContextHandle);
 	if (!SpecHandle.IsValid())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("SpecHandle is not valid"));
 		return;
 	}
 	
@@ -582,9 +561,6 @@ void AP48PlayerCharacter::ApplyGroggyDamage(AActor* HitActor)
 	SpecHandle.Data->SetSetByCallerMagnitude(GroggyDataTag, GroggyDamage);
 	
 	TargetASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
-	
-	UE_LOG(LogTemp, Log, TEXT("[%s]가 [%s]에게 주먹 피격, Groggy +%.1f 누적"),
-		*GetName(), *HitActor->GetName(), GroggyDamage);
 }
 
 bool AP48PlayerCharacter::Server_ApplyHit_Validate(AActor* HitActor, const FVector& HitLoc, const FVector& HitDir)
@@ -600,15 +576,12 @@ void AP48PlayerCharacter::Server_ApplyHit_Implementation(AActor* HitActor, const
 	{
 		TargetCharacter->OnHit(HitLoc, HitDir, 60000.f);
 	}
-	
-	UE_LOG(LogTemp, Warning, TEXT("[ServerRPC] %s가 %s 타격"), *GetName(), *HitActor->GetName());
 }
 
 void AP48PlayerCharacter::Multicast_PlayStunMontage_Implementation(bool bPlay, FRotator TargetRotation)
 {
 	if (!StunMontage)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("There is no StunMontage"));
 		return;
 	}
 	
@@ -623,7 +596,10 @@ void AP48PlayerCharacter::Multicast_PlayStunMontage_Implementation(bool bPlay, F
 	}
 	else
 	{
-		StopAnimMontage(StunMontage);
+		if (UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance())
+		{
+			AnimInstance->Montage_Stop(0.2f, StunMontage);
+		}
 	}
 }
 
@@ -646,11 +622,6 @@ void AP48PlayerCharacter::OnGroggyChanged(const struct FOnAttributeChangeData& D
 			FGameplayEffectContextHandle ContextHandle = AbilitySystemComponent->MakeEffectContext();
 			ContextHandle.AddSourceObject(this);
 			
-			if (StunEffectClass)
-			{
-				AbilitySystemComponent->BP_ApplyGameplayEffectToSelf(StunEffectClass, 1.0f, ContextHandle);
-			}
-			
 			if (ResetGroggyEffectClass)
 			{
 				AbilitySystemComponent->BP_ApplyGameplayEffectToSelf(ResetGroggyEffectClass, 1.0f, ContextHandle);
@@ -660,9 +631,12 @@ void AP48PlayerCharacter::OnGroggyChanged(const struct FOnAttributeChangeData& D
 				GroggyAttributeSet->SetGroggy(0.0f);
 			}
 			
-			FRotator FaceAttackerRot = GetActorRotation();
+			if (StunEffectClass)
+			{
+				AbilitySystemComponent->BP_ApplyGameplayEffectToSelf(StunEffectClass, 1.0f, ContextHandle);
+			}
 			
-			UE_LOG(LogTemp, Warning, TEXT("[%s] 그로기 게이지 만충! 스턴 돌입!"), *GetName());
+			FRotator FaceAttackerRot = GetActorRotation();
 		}
 	}
 }
@@ -680,6 +654,18 @@ void AP48PlayerCharacter::OnStunTagChanged(const struct FGameplayTag CallbackTag
 			const FVector FaceToAttackDirection = -LastHitDirection;
 			
 			LookAtRotation = FRotator(0.0f, FaceToAttackDirection.Rotation().Yaw, 0.0f);
+			
+			if (AP48PlayerState* PS = GetPlayerState<AP48PlayerState>())
+			{
+				PS->AddStunCount();
+				
+				if (PS->GetStunCount() >= MaxStunCount)
+				{
+					UE_LOG(LogTemp, Error, TEXT("[%s] 사망"), *GetName());
+					PS->OnDeath();
+					return;
+				}
+			}
 		}
 		
 		Multicast_PlayStunMontage(bIsStunned, LookAtRotation);
@@ -690,10 +676,25 @@ void AP48PlayerCharacter::OnStunTagChanged(const struct FGameplayTag CallbackTag
 		if (bIsStunned)
 		{
 			MoveComp->DisableMovement();
+			if (GEngine)
+			{
+				GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Yellow, TEXT("MoveMode: Disable"));
+			}
 		}	
 		else
 		{
 			MoveComp->SetMovementMode(MOVE_Walking);
+			
+			if (USkeletalMeshComponent* MeshComp = GetMesh())
+			{
+				MeshComp->SetAllBodiesBelowSimulatePhysics(TEXT("spine"), true, true);
+				MeshComp->SetPhysicsBlendWeight(0.5f);
+			}
+			
+			if (GEngine)
+			{
+				GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Yellow, TEXT("MoveMode: MOVE_Walking"));
+			}
 		}
 	}
 }
