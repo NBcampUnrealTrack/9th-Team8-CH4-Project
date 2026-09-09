@@ -7,10 +7,10 @@
 #include "P48BestOfRoundsMatchFlowRule.generated.h"
 
 /**
- * @brief 일반 라운드를 모두 진행한 뒤 최다 승수와 결정전으로 승자를 정하는 규칙
+ * @brief 2승 달성 시 즉시 종료하고, 미달성 시 최다 승수와 결정전으로 승자를 정하는 규칙
  *
  * 일반 라운드 무승부도 진행 횟수에 포함
- * 결정전과 재경기는 일반 라운드 번호 및 승수에 포함하지 않음
+ * 결정전은 일반 라운드 번호에 포함하지 않으며 승리는 승수에 반영, 무승부는 Match 종료
  */
 UCLASS()
 class PROJECT48_API UP48BestOfRoundsMatchFlowRule : public UP48MatchFlowRule
@@ -35,6 +35,6 @@ private:
 	// 일반 라운드 진행 횟수
 	int32 DefaultRoundCount = 3;
 
-	// 이번 결정전과 재경기에 참가할 플레이어 목록
+	// 이번 결정전에 참가할 플레이어 목록
 	TArray<TWeakObjectPtr<AP48PlayerState>> TiebreakerParticipants;
 };

@@ -29,6 +29,34 @@ void AP48GameStateBase::GetLifetimeReplicatedProps(
 	DOREPLIFETIME(AP48GameStateBase, bRoundDraw);
 	DOREPLIFETIME(AP48GameStateBase, MatchWinner);
 	DOREPLIFETIME(AP48GameStateBase, bIsTiebreaker);
+	DOREPLIFETIME(AP48GameStateBase, RoundEndServerTime);
+}
+
+void AP48GameStateBase::SetRoundEndServerTime(double NewEndTime)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	RoundEndServerTime = NewEndTime;
+	ForceNetUpdate();
+}
+
+float AP48GameStateBase::GetRemainingRoundTime() const
+{
+	if (MatchPhase != EP48MatchPhase::Playing || RoundEndServerTime <= 0.0)
+	{
+		return 0.0f;
+	}
+
+	return static_cast<float>(FMath::Max(0.0, RoundEndServerTime - GetServerWorldTimeSeconds()));
+}
+
+bool AP48GameStateBase::IsRoundTimeExpired() const
+{
+	return MatchPhase == EP48MatchPhase::Playing && RoundEndServerTime > 0.0
+		&& GetServerWorldTimeSeconds() >= RoundEndServerTime;
 }
 
 void AP48GameStateBase::SetMatchPhase(EP48MatchPhase NewMatchPhase)

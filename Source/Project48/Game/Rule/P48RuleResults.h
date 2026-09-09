@@ -28,7 +28,6 @@ enum class EP48MatchFlowAction : uint8
 	None,
 	NextRound,
 	StartTiebreaker,
-	ReplayTiebreaker,
 	MatchWinner,
 	MatchDraw,
 	CheckRound

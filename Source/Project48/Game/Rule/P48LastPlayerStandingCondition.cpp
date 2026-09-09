@@ -5,7 +5,7 @@
 #include "Project48/Character/P48PlayerState.h"
 
 FP48RoundResult UP48LastPlayerStandingCondition::Evaluate(
-	const TArray<AP48PlayerState*>& Participants) const
+	const TArray<AP48PlayerState*>& Participants, bool bTimeExpired) const
 {
 	FP48RoundResult Result;
 
@@ -26,7 +26,8 @@ FP48RoundResult UP48LastPlayerStandingCondition::Evaluate(
 	else
 	{
 		Result.Winner = nullptr;
-		Result.Outcome = Result.AliveCount == 0
+		// 마지막 생존자가 없거나 제한 시간까지 승자가 정해지지 않으면 무승부
+		Result.Outcome = (Result.AliveCount == 0 || bTimeExpired)
 			? EP48RoundOutcome::Draw : EP48RoundOutcome::InProgress;
 	}
 

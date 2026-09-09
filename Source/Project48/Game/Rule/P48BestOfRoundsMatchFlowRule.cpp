@@ -33,15 +33,24 @@ FP48MatchFlowResult UP48BestOfRoundsMatchFlowRule::ResolveRound(
 		return Result;
 	}
 
-	// 결정전은 일반 승수 집계 없이 생존자를 최종 승자로 처리
+	// 결정전 승리도 승수에 반영하고 누적 승수와 관계없이 Match 종료
+	Result.bAwardRoundWin = Winner != nullptr;
 	if (State.IsTiebreaker())
 	{
-		Result.Action = Winner ? EP48MatchFlowAction::MatchWinner : EP48MatchFlowAction::ReplayTiebreaker;
+		// 결정전 무승부는 재경기 없이 Match 무승부로 종료
+		Result.Action = Winner ? EP48MatchFlowAction::MatchWinner : EP48MatchFlowAction::MatchDraw;
 		Result.Winner = Winner;
 		return Result;
 	}
 
-	Result.bAwardRoundWin = Winner != nullptr;
+	// 실제 승수 반영 전에 이번 승리까지 포함하여 2승 달성 여부 확인
+	if (Winner && Winner->GetRoundWinCount() + 1 >= 2)
+	{
+		Result.Action = EP48MatchFlowAction::MatchWinner;
+		Result.Winner = Winner;
+		return Result;
+	}
+
 	if (State.CurrentRound < DefaultRoundCount)
 	{
 		Result.Action = EP48MatchFlowAction::NextRound;
@@ -111,7 +120,7 @@ bool UP48BestOfRoundsMatchFlowRule::RemoveParticipant(
 		return false;
 	}
 
-	// 이미 탈락한 참가자도 재경기 목록에서 제거
+	// 이미 탈락한 참가자도 결정전 참가자 목록에서 제거
 	TiebreakerParticipants.RemoveAll(
 		[Player](const TWeakObjectPtr<AP48PlayerState>& Participant)
 		{
