@@ -58,6 +58,16 @@ public:
 	// 서버에서 결정전 진행 상태 변경
 	void SetTiebreaker(bool bNewTiebreaker);
 
+	// 서버 기준 라운드 종료 시각 설정, 0이면 시간제한 비활성
+	void SetRoundEndServerTime(double NewEndTime);
+
+	// 서버와 동기화된 시각으로 UI에 표시할 남은 시간 계산
+	UFUNCTION(BlueprintPure, Category = "Round")
+	float GetRemainingRoundTime() const;
+
+	// 서버에서 라운드 규칙에 전달할 시간 만료 여부 조회
+	bool IsRoundTimeExpired() const;
+
 	// 현재 결정전 상태인지 조회
 	UFUNCTION(BlueprintPure, Category = "Match")
 	bool IsTiebreaker() const
@@ -99,6 +109,9 @@ public:
 	int32 CurrentRound = 0;
 	
 protected:
+	// 매초 남은 시간을 복제하는 대신 종료 시각만 공유
+	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Round")
+	double RoundEndServerTime = 0.0;
 	
 	// Replication 완료 후 클라이언트에서 호출
 	UFUNCTION()

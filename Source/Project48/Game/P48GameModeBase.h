@@ -15,6 +15,7 @@ class PROJECT48_API AP48GameModeBase : public AGameModeBase
 	GENERATED_BODY()
 	
 public:
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer) override;
 	virtual void OnPostLogin(AController* NewPlayer) override;
 	virtual void Logout(AController* Exit) override;
@@ -50,4 +51,13 @@ protected:
 	virtual void StartMatch();
 	void StartRoundEnd();
 	virtual void PrepareNextRound();
+
+	// 다음 라운드 준비 시 일반 라운드 번호 증가 여부
+	virtual bool ShouldAdvanceRound() const { return true; }
+
+	// 참가자 퇴장 시 카운트다운 취소 여부
+	virtual bool ShouldCancelCountdown(int32 RemainingParticipants) const;
+
+	// Match 종료 및 월드 종료 시 진행 타이머 정리
+	virtual void ClearMatchTimers();
 };

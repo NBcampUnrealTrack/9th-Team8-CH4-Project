@@ -56,4 +56,6 @@ public:
 	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon|Audio")
 	TSoftObjectPtr<USoundBase> HitSound;
+	
+	bool HasValidBalanceData() const;
 };

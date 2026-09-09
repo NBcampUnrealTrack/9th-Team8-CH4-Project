@@ -26,9 +26,9 @@ struct PROJECT48_API FP48AirStructureGenerationSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Air", meta = (ClampMin = "0.0", Units = "cm"))
 	FVector2D MapSize = FVector2D(40000.0f, 40000.0f);
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Air", meta = (Units = "cm"))
-	FVector2D HeightRange = FVector2D(-2000.0f, 2000.0f);
+	FVector2D HeightRange = FVector2D(-1000.0f, 1000.0f);
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Air", meta = (ClampMin = "0.0", Units = "cm"))
-	float GlobalMinGap = 1000.0f;
+	float GlobalMinGap = 500.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Air", meta = (ClampMin = "1"))
 	int32 MaxPlacementAttemptsPerStructure = 100;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Air", meta = (ClampMin = "1"))
@@ -36,9 +36,9 @@ struct PROJECT48_API FP48AirStructureGenerationSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Air|SkyIsland", meta = (EditCondition = "PlacementMode == EP48AirPlacementMode::SkyIsland"))
 	bool bRequireConnectableLayout = true;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Air|SkyIsland", meta = (EditCondition = "PlacementMode == EP48AirPlacementMode::SkyIsland", ClampMin = "1.0", Units = "cm"))
-	float MaxIslandCenterDistance = 8000.0f;
+	float MaxIslandCenterDistance = 5000.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Air|SkyIsland", meta = (EditCondition = "PlacementMode == EP48AirPlacementMode::SkyIsland", ClampMin = "0.0", Units = "cm"))
-	float HeightStep = 500.0f;
+	float HeightStep = 250.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Air|SkyIsland", meta = (EditCondition = "PlacementMode == EP48AirPlacementMode::SkyIsland && bRequireConnectableLayout"))
 	FP48BridgeConnectionRules ConnectionRules;
 };

@@ -1,4 +1,6 @@
 #include "P48PCGAirStructureSettings.h"
+
+#include "PCGComponent.h"
 #include "../Common/P48PCGSeedHelpers.h"
 
 #include "../Common/P48PCGSpawnAttributeNames.h"
@@ -14,6 +16,7 @@
 const FName UP48PCGAirStructureSettings::StaticMeshOutputLabel(TEXT("StaticMeshPoints"));
 const FName UP48PCGAirStructureSettings::ActorOutputLabel(TEXT("ActorPoints"));
 const FName UP48PCGAirStructureSettings::AnchorOutputLabel(TEXT("ConnectionAnchors"));
+const FName UP48PCGAirStructureSettings::MapBoundsOutputLabel(TEXT("MapBounds"));
 
 namespace P48AirStructure
 {
@@ -268,6 +271,7 @@ namespace P48AirStructure
 		FPCGMetadataAttribute<FSoftObjectPath>* MeshAttribute = Type == ESpawnType::StaticMesh ? Metadata->CreateAttribute<FSoftObjectPath>(P48PCGSpawnAttributeNames::Mesh, FSoftObjectPath(), false, false) : nullptr;
 		FPCGMetadataAttribute<FSoftClassPath>* ActorClassAttribute = Type == ESpawnType::Actor ? Metadata->CreateAttribute<FSoftClassPath>(P48PCGSpawnAttributeNames::ActorClass, FSoftClassPath(), false, false) : nullptr;
 		FPCGMetadataAttribute<int32>* IslandIndexAttribute = Metadata->CreateAttribute<int32>(P48PCGSpawnAttributeNames::IslandIndex, INDEX_NONE, false, false);
+		FPCGMetadataAttribute<bool>* PlayerAttribute = Type == ESpawnType::StaticMesh ? Metadata->CreateAttribute<bool>(P48PCGSpawnAttributeNames::CanSpawnPlayer, false, false, false) : nullptr;
 
 		FPCGPointValueRanges Ranges(PointData, false);
 		for (int32 PointIndex = 0; PointIndex < Matching.Num(); ++PointIndex)
@@ -290,6 +294,10 @@ namespace P48AirStructure
 				ActorClassAttribute->SetValue(Point.MetadataEntry, FSoftClassPath(Item.Entry->ActorClass.Get()));
 			}
 			IslandIndexAttribute->SetValue(Point.MetadataEntry, Item.IslandIndex);
+			if (PlayerAttribute)
+			{
+				PlayerAttribute->SetValue(Point.MetadataEntry, Item.Entry->bCanSpawnPlayer);
+			}
 			Ranges.SetFromPoint(PointIndex, Point);
 		}
 
@@ -332,6 +340,30 @@ namespace P48AirStructure
 
 		return PointData;
 	}
+
+	UPCGBasePointData* CreateMapBoundsData(
+		FPCGContext* Context,
+		const FVector2D& MapSize,
+		const FTransform& SourceTransform,
+		const int32 Seed)
+	{
+		const FVector2D HalfMapSize = MapSize.GetAbs() * 0.5f;
+
+		FPCGPoint Point;
+		Point.Transform = SourceTransform;
+		Point.Density = 1.0f;
+		Point.BoundsMin = FVector(-HalfMapSize.X, -HalfMapSize.Y, -0.5f);
+		Point.BoundsMax = FVector(HalfMapSize.X, HalfMapSize.Y, 0.5f);
+		Point.Steepness = 1.0f;
+		Point.Seed = Seed;
+
+		UPCGBasePointData* PointData = FPCGContext::NewPointData_AnyThread(Context);
+		PointData->SetNumPoints(1, false);
+		PointData->AllocateProperties(EPCGPointNativeProperties::All);
+		FPCGPointValueRanges Ranges(PointData, false);
+		Ranges.SetFromPoint(0, Point);
+		return PointData;
+	}
 }
 
 #if WITH_EDITOR
@@ -357,6 +389,7 @@ TArray<FPCGPinProperties> UP48PCGAirStructureSettings::OutputPinProperties() con
 	Pins.Emplace(StaticMeshOutputLabel, EPCGDataType::Point);
 	Pins.Emplace(ActorOutputLabel, EPCGDataType::Point);
 	Pins.Emplace(AnchorOutputLabel, EPCGDataType::Point);
+	Pins.Emplace(MapBoundsOutputLabel, EPCGDataType::Point);
 	return Pins;
 }
 
@@ -482,9 +515,18 @@ bool FP48PCGAirStructureElement::ExecuteInternal(FPCGContext* Context) const
 		Output.Pin = Pin;
 	};
 
+	UWorld* World = Context->ExecutionSource.IsValid() ? Context->ExecutionSource->GetExecutionState().GetWorld() : nullptr;
+	const bool bClient = World && World->GetNetMode() == NM_Client;
+
 	AddOutput(P48AirStructure::CreatePointData(Context, BestLayout, P48AirStructure::ESpawnType::StaticMesh, SourceTransform), UP48PCGAirStructureSettings::StaticMeshOutputLabel);
-	AddOutput(P48AirStructure::CreatePointData(Context, BestLayout, P48AirStructure::ESpawnType::Actor, SourceTransform), UP48PCGAirStructureSettings::ActorOutputLabel);
+
+	if (!bClient)
+	{
+		AddOutput(P48AirStructure::CreatePointData(Context, BestLayout, P48AirStructure::ESpawnType::Actor, SourceTransform), UP48PCGAirStructureSettings::ActorOutputLabel);
+	}
+
 	AddOutput(P48AirStructure::CreateAnchorData(Context, BestLayout, SourceTransform), UP48PCGAirStructureSettings::AnchorOutputLabel);
+	AddOutput(P48AirStructure::CreateMapBoundsData(Context, Rules.MapSize, SourceTransform, BaseSeed), UP48PCGAirStructureSettings::MapBoundsOutputLabel);
 	return true;
 }
 

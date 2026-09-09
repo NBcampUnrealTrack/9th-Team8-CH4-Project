@@ -5,7 +5,7 @@
 #include "../../Datas/Structs/P48PlayerSpawnSettings.h"
 #include "P48PCGPlayerSpawnSelectorSettings.generated.h"
 
-/** 하늘섬 Connection Anchor 중 안전 간격을 만족하는 플레이어 시작점을 선택합니다. */
+/** 안전한 표면 후보에서 서로 다른 섬과 수평 간격을 우선해 PlayerStart 위치를 선택합니다. */
 UCLASS(BlueprintType, ClassGroup = (Procedural), meta = (Keywords = "player spawn selector sky island"))
 class PROJECT48_API UP48PCGPlayerSpawnSelectorSettings : public UPCGSettings
 {
@@ -14,6 +14,14 @@ class PROJECT48_API UP48PCGPlayerSpawnSelectorSettings : public UPCGSettings
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|PlayerSpawn", meta = (PCG_Overridable))
 	FP48PlayerSpawnSettings SelectionSettings;
+
+#if WITH_EDITORONLY_DATA
+	UPROPERTY(EditAnywhere, Category = "Map|Debug")
+	bool bOverridePlayerCountForDebug = false;
+
+	UPROPERTY(EditAnywhere, Category = "Map|Debug", meta = (EditCondition = "bOverridePlayerCountForDebug", ClampMin = "1", UIMin = "1"))
+	int32 DebugPlayerCount = 1;
+#endif
 
 	virtual bool UseSeed() const override { return true; }
 

@@ -20,6 +20,10 @@ public:
 	int32 DirectionCount = 16;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Surface", meta = (ClampMin = "4", ClampMax = "64"))
 	int32 RadialSteps = 24;
+
+	/** 대략적인 경계를 찾은 뒤 이진 탐색으로 가장자리를 정밀화하는 횟수입니다. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Surface", meta = (ClampMin = "3", ClampMax = "12"))
+	int32 EdgeRefinementSteps = 7;
 	/** 탐색된 가장자리에서 섬 중심 방향으로 물러나는 거리입니다. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Surface", meta = (ClampMin = "0.0", Units = "cm"))
 	float EdgeInset = 100.0f;

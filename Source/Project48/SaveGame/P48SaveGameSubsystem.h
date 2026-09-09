@@ -32,4 +32,9 @@ private:
 	
 	UPROPERTY()
 	TObjectPtr<UP48PlayerSaveGame> CurrentSaveGame;
+	
+	void ApplyValidatedPlayerData(
+		const FString& Nickname, int32 PlayerLevel, int32 Experience);
+	
+	bool SaveCurrentPlayerSave() const;
 };
