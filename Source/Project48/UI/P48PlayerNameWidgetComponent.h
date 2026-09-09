@@ -15,4 +15,6 @@ public:
 	UP48PlayerNameWidgetComponent();
 	
 	virtual void TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+	
+	void UpdateNickname();
 };
