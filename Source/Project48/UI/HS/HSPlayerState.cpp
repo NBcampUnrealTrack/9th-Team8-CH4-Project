@@ -3,7 +3,7 @@
 #include "Project48/Character/P48PlayerCharacter.h"
 #include "Project48/UI/P48PlayerNameWidgetComponent.h"
 
-AP48PlayerState::AP48PlayerState()
+AHSPlayerState::AHSPlayerState()
 {
 	bReplicates = true;
 }
