@@ -17,6 +17,7 @@ class PROJECT48_API AP48GameModeBase : public AGameModeBase
 	GENERATED_BODY()
 	
 public:
+	virtual void InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage) override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer) override;
 	virtual void OnPostLogin(AController* NewPlayer) override;
@@ -26,6 +27,9 @@ public:
 	void NotifyMapGenerationReadinessChanged();
 	
 protected:
+	// 로비에서 확정하여 이동 옵션으로 전달한 참가 인원
+	int32 ConfirmedPlayerCount = 0;
+	bool bMapGenerationRequested = false;
 	
 	/* 게임 시작에 필요한 최소 인원 */
 	UPROPERTY(EditDefaultsOnly, Category = "Match")
