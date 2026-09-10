@@ -9,4 +9,20 @@ class PROJECT48_API AHSPlayerState : public AP48PlayerState
 {
 	GENERATED_BODY()
 	
+public:
+	AHSPlayerState();
+
+	UPROPERTY(ReplicatedUsing = OnRep_Nickname)
+	FString Nickname;
+
+	UFUNCTION()
+	void OnRep_Nickname();
+
+	const FString& GetNickname() const { return Nickname; }
+
+	void SetNickname(const FString& InNickname);
+
+protected:
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+	
 };
