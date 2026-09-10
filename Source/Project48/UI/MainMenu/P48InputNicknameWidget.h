@@ -21,6 +21,9 @@ protected:
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UEditableTextBox> EditableText_InputNickname;
 	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UEditableTextBox> EditableText_InputUserID;
+	
+	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UTextBlock>TextBlock_Error;
 
 private:
