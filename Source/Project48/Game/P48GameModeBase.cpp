@@ -6,42 +6,24 @@
 #include "../GameplayMessageLibrary/Core/P48GameplayMessageLibrary.h"
 #include "../GameplayMessageLibrary/Core/P48GameplayMessageTags.h"
 #include "../GameplayMessageLibrary/Map/P48MapMessagePayloads.h"
+#include "../GameplayMessageLibrary/Match/P48MatchMessagePayloads.h"
 #include "TimerManager.h"
 
 #include "P48GameStateBase.h"
 #include "../Character/P48PlayerState.h"
-#include "../Maps/PCG/Common/P48PCGNetworkSeedSettings.h"
+#include "../Maps/PCG/Common/P48PCGSeedWorldSubsystem.h"
 #include "../Maps/PCG/Common/P48PCGSeedState.h"
 #include "EngineUtils.h"
-#include "PCGComponent.h"
-#include "PCGGraph.h"
-#include "PCGNode.h"
 
 
 #include "GameFramework/PlayerController.h"
 
-#include "Misc/Guid.h"
 
 namespace P48MapReadiness
 {
-	bool RequiresNetworkSeed(const UWorld* World)
+	bool RequiresNetworkSeed(UWorld* World)
 	{
-		if (!World) { return false; }
-		for (TActorIterator<AActor> ActorIt(World); ActorIt; ++ActorIt)
-		{
-			TArray<UPCGComponent*> Components;
-			ActorIt->GetComponents(Components);
-			for (const UPCGComponent* Component : Components)
-			{
-				const UPCGGraph* Graph = Component ? Component->GetGraph() : nullptr;
-				if (!Graph) { continue; }
-				for (const UPCGNode* Node : Graph->GetNodes())
-				{
-					if (Node && Cast<UP48PCGNetworkSeedSettings>(Node->GetSettings())) { return true; }
-				}
-			}
-		}
-		return false;
+		return UP48PCGSeedWorldSubsystem::HasNetworkSeedConsumer(World);
 	}
 
 	AP48PCGSeedState* FindSeedState(const UWorld* World)
@@ -210,6 +192,15 @@ void AP48GameModeBase::Logout(AController* Exit)
 
     UE_LOG(LogTemp,Warning,TEXT("Remaining Match Participants: %d"),RemainingParticipantCount);
 
+	if (bMapGenerationRequested && bWasMatchParticipant)
+	{
+		ConfirmedPlayerCount = RemainingParticipantCount;
+		UP48GameplayMessageLibrary::Broadcast(
+			this,
+			P48GameplayTags::Match::PlayerCountChanged,
+			FP48MatchPlayerCountMessage(RemainingParticipantCount));
+	}
+
     if (IsValid(P48GameState) == true
         && P48GameState->MatchPhase == EP48MatchPhase::Countdown
         && bWasMatchParticipant == true
@@ -281,17 +272,18 @@ void AP48GameModeBase::CheckStartCondition()
 	if (!bMapGenerationRequested)
 	{
 		ConfirmMatchParticipants();
-		FP48MapGenerationRequestMessage Message;
-		Message.PlayerCount = ConfirmedPlayerCount;
-		Message.Seed = 0; // Maps에서 Seed를 자동 생성한다.
 
-		// 동기 메시지 처리 중 시작 조건이 재호출되어도 중복 발행하지 않는다.
+		// 참가 명단을 먼저 잠근다. PCG 맵인 경우에만 Maps에 실제 생성을 요청한다.
 		bMapGenerationRequested = true;
-		if (!UP48GameplayMessageLibrary::Broadcast(this, P48GameplayTags::Map::GenerationRequested, Message))
+		if (P48MapReadiness::RequiresNetworkSeed(GetWorld()))
 		{
-			bMapGenerationRequested = false;
-			UE_LOG(LogTemp, Error, TEXT("[Server] Map generation Broadcast failed."));
-			return;
+			const FP48MapGenerationRequestMessage Message(ConfirmedPlayerCount, 0);
+			if (!UP48GameplayMessageLibrary::Broadcast(this, P48GameplayTags::Map::GenerationRequested, Message))
+			{
+				bMapGenerationRequested = false;
+				UE_LOG(LogTemp, Error, TEXT("[Server] Map generation Broadcast failed."));
+				return;
+			}
 		}
 		if (P48GameState->MatchPhase != EP48MatchPhase::Waiting) { return; }
 	}
@@ -473,12 +465,29 @@ void AP48GameModeBase::PrepareNextRound()
 	bWaitingForRoundMap = true;
 	GetWorldTimerManager().ClearTimer(RoundEndTimerHandle);
 	PlayersWaitingForMap.Reset();
-	if (AP48PCGSeedState* SeedState = P48MapReadiness::FindSeedState(GetWorld()))
+
+	int32 ParticipantCount = 0;
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{
-		int32 NewSeed = static_cast<int32>(GetTypeHash(FGuid::NewGuid()) & MAX_int32);
-		if (NewSeed == SeedState->State.Seed) { NewSeed = NewSeed == MAX_int32 ? 0 : NewSeed + 1; }
-		SeedState->SetMapSeed(NewSeed);
+		const APlayerController* PC = It->Get();
+		if (PC && IsRoundSpawnParticipant(PC->GetPlayerState<AP48PlayerState>()))
+		{
+			++ParticipantCount;
+		}
 	}
+	ConfirmedPlayerCount = ParticipantCount;
+
+	if (P48MapReadiness::RequiresNetworkSeed(GetWorld()))
+	{
+		const FP48MapGenerationRequestMessage Message(ParticipantCount, 0);
+		if (ParticipantCount <= 0 || !UP48GameplayMessageLibrary::Broadcast(this, P48GameplayTags::Map::GenerationRequested, Message))
+		{
+			bWaitingForRoundMap = false;
+			UE_LOG(LogTemp, Error, TEXT("[RoundMap] Failed to request map generation. Participants=%d"), ParticipantCount);
+			return;
+		}
+	}
+
 	// 완료 알림 외에도 퇴장으로 준비 조건이 풀리는 경우 재확인한다.
 	GetWorldTimerManager().SetTimer(RoundMapPreparationTimerHandle, this, &ThisClass::TryFinishRoundMapPreparation, 0.1f, true);
 }
