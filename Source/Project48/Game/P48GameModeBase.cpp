@@ -2,6 +2,10 @@
 
 
 #include "P48GameModeBase.h"
+#include "Kismet/GameplayStatics.h"
+#include "../GameplayMessageLibrary/Core/P48GameplayMessageLibrary.h"
+#include "../GameplayMessageLibrary/Core/P48GameplayMessageTags.h"
+#include "../GameplayMessageLibrary/Map/P48MapMessagePayloads.h"
 #include "TimerManager.h"
 
 #include "P48GameStateBase.h"
@@ -12,6 +16,11 @@
 #include "PCGComponent.h"
 #include "PCGGraph.h"
 #include "PCGNode.h"
+
+
+#include "GameFramework/PlayerController.h"
+
+#include "Misc/Guid.h"
 
 namespace P48MapReadiness
 {
@@ -38,15 +47,35 @@ namespace P48MapReadiness
 	AP48PCGSeedState* FindSeedState(const UWorld* World)
 	{
 		if (!World) { return nullptr; }
-		for (TActorIterator<AP48PCGSeedState> It(World); It; ++It) { return *It; }
+		TActorIterator<AP48PCGSeedState> It(World);
+		if (It) { return *It; }
 		return nullptr;
+	}
+}
+
+void AP48GameModeBase::InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage)
+{
+	Super::InitGame(MapName, Options, ErrorMessage);
+
+	ConfirmedPlayerCount = UGameplayStatics::GetIntOption(Options, TEXT("ExpectedPlayers"), 0);
+	if (ConfirmedPlayerCount <= 0)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[Server] Missing or invalid ExpectedPlayers: %d"), ConfirmedPlayerCount);
 	}
 }
 
 void AP48GameModeBase::HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer)
 {
 	if (!NewPlayer) { return; }
+	const AP48PlayerState* Player = NewPlayer->GetPlayerState<AP48PlayerState>();
+	if (bMapGenerationRequested && (!Player || !Player->IsMatchParticipant())) { return; }
 	if (AP48PCGSeedState* SeedState = P48MapReadiness::FindSeedState(GetWorld())) { SeedState->NotifyControllerJoined(NewPlayer); }
+	const AP48GameStateBase* GS = GetGameState<AP48GameStateBase>();
+	if (bWaitingForRoundMap || (GS && GS->MatchPhase != EP48MatchPhase::Waiting
+		&& !IsRoundSpawnParticipant(NewPlayer->GetPlayerState<AP48PlayerState>())))
+	{
+		return;
+	}
 	if (IsMapReadyForPlayer(NewPlayer))
 	{
 		Super::HandleStartingNewPlayer_Implementation(NewPlayer);
@@ -65,6 +94,15 @@ bool AP48GameModeBase::IsMapReadyForPlayer(const APlayerController* PlayerContro
 
 void AP48GameModeBase::NotifyMapGenerationReadinessChanged()
 {
+	if (!HasAuthority()) { return; }
+	if (bWaitingForRoundMap)
+	{
+		// 맵 준비 상태 변경 알림을 받은 뒤 다음 틱에서 라운드 준비 완료 여부를 확인한다.
+		GetWorldTimerManager().SetTimerForNextTick(this, &ThisClass::TryFinishRoundMapPreparation);
+		return;
+	}
+	const AP48GameStateBase* GS = GetGameState<AP48GameStateBase>();
+	if (!GS || GS->MatchPhase == EP48MatchPhase::MatchEnd) { return; }
 	SpawnPlayersWaitingForMap();
 	CheckStartCondition();
 }
@@ -75,6 +113,12 @@ void AP48GameModeBase::SpawnPlayersWaitingForMap()
 	{
 		APlayerController* PlayerController = PlayersWaitingForMap[Index].Get();
 		if (!PlayerController)
+		{
+			PlayersWaitingForMap.RemoveAtSwap(Index);
+			continue;
+		}
+		const AP48PlayerState* Player = PlayerController->GetPlayerState<AP48PlayerState>();
+		if (bMapGenerationRequested && (!Player || !Player->IsMatchParticipant()))
 		{
 			PlayersWaitingForMap.RemoveAtSwap(Index);
 			continue;
@@ -106,8 +150,8 @@ void AP48GameModeBase::OnPostLogin(AController* NewPlayer)
 		return;
 	}
 
-	// Waiting 이후 접속자는 현재 Match에 참가시키지 않는다. (중도 입장 불가!)
-	if (P48GameState->MatchPhase != EP48MatchPhase::Waiting)
+	// 맵 생성 요청 이후 접속자는 현재 매치에 참가시키지 않는다.
+	if (bMapGenerationRequested || P48GameState->MatchPhase != EP48MatchPhase::Waiting)
 	{
 		P48PlayerState->SetMatchParticipant(false);
 		P48PlayerState->SetAlive(false);
@@ -178,7 +222,8 @@ void AP48GameModeBase::Logout(AController* Exit)
 		{
 			AP48PlayerState* P48PlayerState = Cast<AP48PlayerState>(PlayerState);
 
-			if (IsValid(P48PlayerState) == true)
+			// 생성 요청 시 확정한 명단은 카운트다운이 취소되어도 유지한다.
+			if (IsValid(P48PlayerState) == true && !bMapGenerationRequested)
 			{
 				P48PlayerState->SetMatchParticipant(false);
 			}
@@ -202,16 +247,6 @@ void AP48GameModeBase::CheckStartCondition()
 		return;
 	}
 
-	if (P48MapReadiness::RequiresNetworkSeed(GetWorld()))
-	{
-		const AP48PCGSeedState* SeedState = P48MapReadiness::FindSeedState(GetWorld());
-		if (!SeedState || !SeedState->IsMapReady()) { return; }
-	}
-	if (GetNumPlayers() < MinPlayersToStart)
-	{
-		return;
-	}
-	
 	AP48GameStateBase* P48GameState = GetGameState<AP48GameStateBase>();
 	if (IsValid(P48GameState) == false)
 	{
@@ -223,21 +258,60 @@ void AP48GameModeBase::CheckStartCondition()
 		return;
 	}
 	
-	// 로비에서 레디 확인을 완료하므로 게임맵의 중복 레디 검사는 사용하지 않음
-	// 예정 인원 전원 도착 여부는 로비 이동 흐름과 별도 연동 필요
-	/*
-	if (AreAllPlayersReady() == false)
+	if (ConfirmedPlayerCount <= 0)
 	{
-		UE_LOG(LogTemp,Warning,TEXT("[Server] Waiting for all players to be ready"));
-
 		return;
 	}
-	*/
+
+	int32 ArrivedPlayerCount = GetNumPlayers();
+	if (bMapGenerationRequested)
+	{
+		ArrivedPlayerCount = 0;
+		for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+		{
+			const AP48PlayerState* Player = It->Get() ? It->Get()->GetPlayerState<AP48PlayerState>() : nullptr;
+			if (IsValid(Player) && Player->IsMatchParticipant()) { ++ArrivedPlayerCount; }
+		}
+	}
+	if (ArrivedPlayerCount != ConfirmedPlayerCount || ArrivedPlayerCount < MinPlayersToStart)
+	{
+		return;
+	}
+
+	if (!bMapGenerationRequested)
+	{
+		ConfirmMatchParticipants();
+		FP48MapGenerationRequestMessage Message;
+		Message.PlayerCount = ConfirmedPlayerCount;
+		Message.Seed = 0; // Maps에서 Seed를 자동 생성한다.
+
+		// 동기 메시지 처리 중 시작 조건이 재호출되어도 중복 발행하지 않는다.
+		bMapGenerationRequested = true;
+		if (!UP48GameplayMessageLibrary::Broadcast(this, P48GameplayTags::Map::GenerationRequested, Message))
+		{
+			bMapGenerationRequested = false;
+			UE_LOG(LogTemp, Error, TEXT("[Server] Map generation Broadcast failed."));
+			return;
+		}
+		if (P48GameState->MatchPhase != EP48MatchPhase::Waiting) { return; }
+	}
+
+	if (P48MapReadiness::RequiresNetworkSeed(GetWorld()))
+	{
+		const AP48PCGSeedState* SeedState = P48MapReadiness::FindSeedState(GetWorld());
+		if (!SeedState || !SeedState->IsMapReady()) { return; }
+		// 로그인 직후에는 전체 준비 상태에 새 Controller가 아직 반영되지 않을 수 있다.
+		for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+		{
+			const AP48PlayerState* Player = It->Get() ? It->Get()->GetPlayerState<AP48PlayerState>() : nullptr;
+			if (!IsValid(Player) || !Player->IsMatchParticipant()) { continue; }
+			if (!SeedState->IsReadyForController(It->Get())) { return; }
+		}
+	}
 	
 	P48GameState->ResetMatchResult();
-	ConfirmMatchParticipants();
 
-	UE_LOG(LogTemp,Warning,TEXT("[Server] Start condition met: %d/%d"),GetNumPlayers(),MinPlayersToStart);
+	UE_LOG(LogTemp,Warning,TEXT("[Server] Start condition met: %d/%d"),ArrivedPlayerCount,ConfirmedPlayerCount);
 	StartCountdown();
 }
 
@@ -297,14 +371,14 @@ void AP48GameModeBase::ConfirmMatchParticipants()
 
 void AP48GameModeBase::StartCountdown()
 {
+	if (bWaitingForRoundMap) { return; }
 	AP48GameStateBase* P48GameState = GetGameState<AP48GameStateBase>();
 	if (!HasAuthority() || !IsValid(P48GameState))
 	{
 		return;
 	}
 
-	if (P48GameState->MatchPhase != EP48MatchPhase::Waiting
-		&& P48GameState->MatchPhase != EP48MatchPhase::RoundEnd)
+	if (P48GameState->MatchPhase != EP48MatchPhase::Waiting && P48GameState->MatchPhase != EP48MatchPhase::RoundEnd)
 	{
 		return;
 	}
@@ -383,7 +457,7 @@ void AP48GameModeBase::PrepareNextRound()
 		return;
 	}
 	
-	if (P48GameState->MatchPhase != EP48MatchPhase::RoundEnd)
+	if (P48GameState->MatchPhase != EP48MatchPhase::RoundEnd || bWaitingForRoundMap)
 	{
 		return;
 	}
@@ -395,7 +469,65 @@ void AP48GameModeBase::PrepareNextRound()
 	}
 	
 	UE_LOG(LogTemp,Warning,TEXT("[Server] Preparing Round %d"),P48GameState->CurrentRound);
-	
+
+	bWaitingForRoundMap = true;
+	GetWorldTimerManager().ClearTimer(RoundEndTimerHandle);
+	PlayersWaitingForMap.Reset();
+	if (AP48PCGSeedState* SeedState = P48MapReadiness::FindSeedState(GetWorld()))
+	{
+		int32 NewSeed = static_cast<int32>(GetTypeHash(FGuid::NewGuid()) & MAX_int32);
+		if (NewSeed == SeedState->State.Seed) { NewSeed = NewSeed == MAX_int32 ? 0 : NewSeed + 1; }
+		SeedState->SetMapSeed(NewSeed);
+	}
+	// 완료 알림 외에도 퇴장으로 준비 조건이 풀리는 경우 재확인한다.
+	GetWorldTimerManager().SetTimer(RoundMapPreparationTimerHandle, this, &ThisClass::TryFinishRoundMapPreparation, 0.1f, true);
+}
+
+bool AP48GameModeBase::IsRoundSpawnParticipant(const AP48PlayerState* Player) const
+{
+	return IsValid(Player) && Player->IsMatchParticipant();
+}
+
+void AP48GameModeBase::TryFinishRoundMapPreparation()
+{
+	AP48GameStateBase* GS = GetGameState<AP48GameStateBase>();
+	if (!HasAuthority() || !bWaitingForRoundMap || !GS || GS->MatchPhase != EP48MatchPhase::RoundEnd)
+	{
+		bWaitingForRoundMap = false;
+		GetWorldTimerManager().ClearTimer(RoundMapPreparationTimerHandle);
+		return;
+	}
+	AP48PCGSeedState* SeedState = P48MapReadiness::FindSeedState(GetWorld());
+	if (P48MapReadiness::RequiresNetworkSeed(GetWorld()) && (!SeedState || !SeedState->IsMapReady())) { return; }
+
+	TArray<APlayerController*> Participants;
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		APlayerController* PC = It->Get();
+		if (PC && IsRoundSpawnParticipant(PC->GetPlayerState<AP48PlayerState>()))
+		{
+			Participants.Add(PC);
+		}
+	}
+	// 결정전 퇴장 결과는 기존 규칙이 확정한다.
+	if (Participants.IsEmpty())
+	{
+		if (!GS->IsTiebreaker())
+		{
+			ClearMatchTimers();
+			GS->SetCurrentRound(0);
+			GS->ResetRoundResult();
+			GS->ResetMatchResult();
+			GS->SetMatchPhase(EP48MatchPhase::Waiting);
+		}
+		return;
+	}
+
+	// TODO: 플레이어 담당의 라운드 복구/재배치 완료 처리와 연결한다.
+	bWaitingForRoundMap = false;
+	GetWorldTimerManager().ClearTimer(RoundMapPreparationTimerHandle);
+	UE_LOG(LogTemp, Display, TEXT("[RoundMap] Ready!! Participants=%d"), Participants.Num());
+	// TODO: 플레이어 담당의 Pawn 재생성·재배치 완료 처리와 연결한 뒤 카운트다운을 시작하도록 변경한다.
 	StartCountdown();
 }
 
@@ -406,6 +538,8 @@ bool AP48GameModeBase::ShouldCancelCountdown(int32 RemainingParticipants) const
 
 void AP48GameModeBase::ClearMatchTimers()
 {
+	bWaitingForRoundMap = false;
+	GetWorldTimerManager().ClearTimer(RoundMapPreparationTimerHandle);
 	GetWorldTimerManager().ClearTimer(CountdownTimerHandle);
 	GetWorldTimerManager().ClearTimer(RoundEndTimerHandle);
 }
