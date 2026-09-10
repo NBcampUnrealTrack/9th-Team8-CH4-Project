@@ -2,6 +2,10 @@
 
 
 #include "P48GameModeBase.h"
+#include "Kismet/GameplayStatics.h"
+#include "../GameplayMessageLibrary/Core/P48GameplayMessageLibrary.h"
+#include "../GameplayMessageLibrary/Core/P48GameplayMessageTags.h"
+#include "../GameplayMessageLibrary/Map/P48MapMessagePayloads.h"
 #include "TimerManager.h"
 
 #include "P48GameStateBase.h"
@@ -49,9 +53,22 @@ namespace P48MapReadiness
 	}
 }
 
+void AP48GameModeBase::InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage)
+{
+	Super::InitGame(MapName, Options, ErrorMessage);
+
+	ConfirmedPlayerCount = UGameplayStatics::GetIntOption(Options, TEXT("ExpectedPlayers"), 0);
+	if (ConfirmedPlayerCount <= 0)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[Server] Missing or invalid ExpectedPlayers: %d"), ConfirmedPlayerCount);
+	}
+}
+
 void AP48GameModeBase::HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer)
 {
 	if (!NewPlayer) { return; }
+	const AP48PlayerState* Player = NewPlayer->GetPlayerState<AP48PlayerState>();
+	if (bMapGenerationRequested && (!Player || !Player->IsMatchParticipant())) { return; }
 	if (AP48PCGSeedState* SeedState = P48MapReadiness::FindSeedState(GetWorld())) { SeedState->NotifyControllerJoined(NewPlayer); }
 	const AP48GameStateBase* GS = GetGameState<AP48GameStateBase>();
 	if (bWaitingForRoundMap || (GS && GS->MatchPhase != EP48MatchPhase::Waiting
@@ -100,6 +117,12 @@ void AP48GameModeBase::SpawnPlayersWaitingForMap()
 			PlayersWaitingForMap.RemoveAtSwap(Index);
 			continue;
 		}
+		const AP48PlayerState* Player = PlayerController->GetPlayerState<AP48PlayerState>();
+		if (bMapGenerationRequested && (!Player || !Player->IsMatchParticipant()))
+		{
+			PlayersWaitingForMap.RemoveAtSwap(Index);
+			continue;
+		}
 		if (!IsMapReadyForPlayer(PlayerController)) { continue; }
 		PlayersWaitingForMap.RemoveAtSwap(Index);
 		Super::HandleStartingNewPlayer_Implementation(PlayerController);
@@ -127,8 +150,8 @@ void AP48GameModeBase::OnPostLogin(AController* NewPlayer)
 		return;
 	}
 
-	// Waiting 이후 접속자는 현재 Match에 참가시키지 않는다. (중도 입장 불가!)
-	if (P48GameState->MatchPhase != EP48MatchPhase::Waiting)
+	// 맵 생성 요청 이후 접속자는 현재 매치에 참가시키지 않는다.
+	if (bMapGenerationRequested || P48GameState->MatchPhase != EP48MatchPhase::Waiting)
 	{
 		P48PlayerState->SetMatchParticipant(false);
 		P48PlayerState->SetAlive(false);
@@ -199,7 +222,8 @@ void AP48GameModeBase::Logout(AController* Exit)
 		{
 			AP48PlayerState* P48PlayerState = Cast<AP48PlayerState>(PlayerState);
 
-			if (IsValid(P48PlayerState) == true)
+			// 생성 요청 시 확정한 명단은 카운트다운이 취소되어도 유지한다.
+			if (IsValid(P48PlayerState) == true && !bMapGenerationRequested)
 			{
 				P48PlayerState->SetMatchParticipant(false);
 			}
@@ -223,16 +247,6 @@ void AP48GameModeBase::CheckStartCondition()
 		return;
 	}
 
-	if (P48MapReadiness::RequiresNetworkSeed(GetWorld()))
-	{
-		const AP48PCGSeedState* SeedState = P48MapReadiness::FindSeedState(GetWorld());
-		if (!SeedState || !SeedState->IsMapReady()) { return; }
-	}
-	if (GetNumPlayers() < MinPlayersToStart)
-	{
-		return;
-	}
-	
 	AP48GameStateBase* P48GameState = GetGameState<AP48GameStateBase>();
 	if (IsValid(P48GameState) == false)
 	{
@@ -244,21 +258,60 @@ void AP48GameModeBase::CheckStartCondition()
 		return;
 	}
 	
-	// 로비에서 레디 확인을 완료하므로 게임맵의 중복 레디 검사는 사용하지 않음
-	// 예정 인원 전원 도착 여부는 로비 이동 흐름과 별도 연동 필요
-	/*
-	if (AreAllPlayersReady() == false)
+	if (ConfirmedPlayerCount <= 0)
 	{
-		UE_LOG(LogTemp,Warning,TEXT("[Server] Waiting for all players to be ready"));
-
 		return;
 	}
-	*/
+
+	int32 ArrivedPlayerCount = GetNumPlayers();
+	if (bMapGenerationRequested)
+	{
+		ArrivedPlayerCount = 0;
+		for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+		{
+			const AP48PlayerState* Player = It->Get() ? It->Get()->GetPlayerState<AP48PlayerState>() : nullptr;
+			if (IsValid(Player) && Player->IsMatchParticipant()) { ++ArrivedPlayerCount; }
+		}
+	}
+	if (ArrivedPlayerCount != ConfirmedPlayerCount || ArrivedPlayerCount < MinPlayersToStart)
+	{
+		return;
+	}
+
+	if (!bMapGenerationRequested)
+	{
+		ConfirmMatchParticipants();
+		FP48MapGenerationRequestMessage Message;
+		Message.PlayerCount = ConfirmedPlayerCount;
+		Message.Seed = 0; // Maps에서 Seed를 자동 생성한다.
+
+		// 동기 메시지 처리 중 시작 조건이 재호출되어도 중복 발행하지 않는다.
+		bMapGenerationRequested = true;
+		if (!UP48GameplayMessageLibrary::Broadcast(this, P48GameplayTags::Map::GenerationRequested, Message))
+		{
+			bMapGenerationRequested = false;
+			UE_LOG(LogTemp, Error, TEXT("[Server] Map generation Broadcast failed."));
+			return;
+		}
+		if (P48GameState->MatchPhase != EP48MatchPhase::Waiting) { return; }
+	}
+
+	if (P48MapReadiness::RequiresNetworkSeed(GetWorld()))
+	{
+		const AP48PCGSeedState* SeedState = P48MapReadiness::FindSeedState(GetWorld());
+		if (!SeedState || !SeedState->IsMapReady()) { return; }
+		// 로그인 직후에는 전체 준비 상태에 새 Controller가 아직 반영되지 않을 수 있다.
+		for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+		{
+			const AP48PlayerState* Player = It->Get() ? It->Get()->GetPlayerState<AP48PlayerState>() : nullptr;
+			if (!IsValid(Player) || !Player->IsMatchParticipant()) { continue; }
+			if (!SeedState->IsReadyForController(It->Get())) { return; }
+		}
+	}
 	
 	P48GameState->ResetMatchResult();
-	ConfirmMatchParticipants();
 
-	UE_LOG(LogTemp,Warning,TEXT("[Server] Start condition met: %d/%d"),GetNumPlayers(),MinPlayersToStart);
+	UE_LOG(LogTemp,Warning,TEXT("[Server] Start condition met: %d/%d"),ArrivedPlayerCount,ConfirmedPlayerCount);
 	StartCountdown();
 }
 
