@@ -14,4 +14,6 @@ class PROJECT48_API AHSGameModeBase : public AP48GameModeBase
 		const FString& Address,
 		const FUniqueNetIdRepl& UniqueId,
 		FString& ErrorMessage) override;
+	
+	virtual void PostLogin(APlayerController* NewPC) override;
 };

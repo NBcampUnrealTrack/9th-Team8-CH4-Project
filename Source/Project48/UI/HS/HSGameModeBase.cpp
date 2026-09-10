@@ -1,7 +1,8 @@
 #include "HSGameModeBase.h"
-
+#include "HSPlayerState.h"
 #include "Kismet/GameplayStatics.h"
 #include "Project48/Database/P48NicknameDatabaseSubsystem.h"
+#include "Project48/Game/P48GameInstance.h"
 
 void AHSGameModeBase::PreLogin(
 		const FString& Options,
@@ -25,21 +26,21 @@ void AHSGameModeBase::PreLogin(
 		return;
 	}
 	
-	UGameInstance* GameInstance = GetGameInstance();
-
-	if (IsValid(GameInstance) == false)
+	UP48GameInstance* P48GameInstance = Cast<UP48GameInstance>(GetGameInstance());
+	if (IsValid(P48GameInstance) == false)
 	{
 		ErrorMessage = TEXT("GameInstance를 가져올 수 없습니다.");
 		return;
 	}
 	
-	UP48NicknameDatabaseSubsystem* DB = GameInstance->GetSubsystem<UP48NicknameDatabaseSubsystem>();
+	UP48NicknameDatabaseSubsystem* DB = P48GameInstance->GetSubsystem<UP48NicknameDatabaseSubsystem>();
 	if (IsValid(DB) == false)
 	{
 		ErrorMessage = TEXT("Nickname Database를 가져올 수 없습니다.");
 		return;
 	}
-	
+	P48GameInstance->SetNickname(Nickname);
+	P48GameInstance->SetUserID(UserID);
 	EP48NicknameRegistrationResult Result = DB->TryRegisterNickname(UserID, Nickname);
 	
 	switch (Result)
@@ -64,4 +65,19 @@ void AHSGameModeBase::PreLogin(
 		ErrorMessage = TEXT("default");
 		break;
 	}
+}
+
+void AHSGameModeBase::PostLogin(APlayerController* NewPC)
+{
+	Super::PostLogin(NewPC);
+	
+	if (IsValid(NewPC) == false) return;
+	
+	AHSPlayerState* PS = NewPC->GetPlayerState<AHSPlayerState>();
+	if (IsValid(PS) == false) return;
+
+	UP48GameInstance* P48GI = Cast<UP48GameInstance>(GetGameInstance());
+	if (IsValid(P48GI) == false) return;
+	
+	PS->SetNickname(P48GI->GetNickname());
 }
