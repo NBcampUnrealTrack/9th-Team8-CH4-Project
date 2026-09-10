@@ -16,6 +16,7 @@ public:
 	
 	virtual void BeginPlay() override;
 	virtual void SetupInputComponent() override;
+	virtual void ClientWasKicked_Implementation(const FText& KickReason) override;
 
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
