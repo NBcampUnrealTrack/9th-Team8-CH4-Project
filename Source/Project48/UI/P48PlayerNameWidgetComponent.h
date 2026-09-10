@@ -13,4 +13,8 @@ class PROJECT48_API UP48PlayerNameWidgetComponent : public UWidgetComponent
 	
 public:
 	UP48PlayerNameWidgetComponent();
+	
+	virtual void TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+	
+	void UpdateNickname();
 };

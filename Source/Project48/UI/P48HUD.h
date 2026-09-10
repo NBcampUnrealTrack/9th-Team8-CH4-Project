@@ -2,8 +2,10 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
-#include "P48ChatWidget.generated.h"
+#include "P48HUD.generated.h"
 
+class UP48ChatWidget;
+class UP48RankingWidget;
 struct FChatMessage;
 class UVerticalBox;
 class UScrollBox;
@@ -11,13 +13,18 @@ class UP48ChatMessage;
 class UP48ChatInput;
 
 UCLASS()
-class PROJECT48_API UP48ChatWidget : public UUserWidget
+class PROJECT48_API UP48HUD : public UUserWidget
 {
 	GENERATED_BODY()
 	
-public:
+protected:
 	virtual void NativeConstruct() override;
 	
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UP48RankingWidget> RankingWidget;
+	
+	/* Chat System */
+public:
 	void OpenChatInput();
 	void CloseChatInput();
 	void AddChatMessage(const FChatMessage& InChatMessage);
