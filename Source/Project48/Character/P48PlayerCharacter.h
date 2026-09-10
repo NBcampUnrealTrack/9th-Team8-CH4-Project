@@ -94,8 +94,6 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="UI|Nickname")
 	TObjectPtr<UP48PlayerNameWidgetComponent> NicknameWidgetComponent;
 	
-	void UpdateNickname();
-	
 	//Weapon
 	UPROPERTY(ReplicatedUsing = OnRep_Weapon)
 	TObjectPtr<AP48WeaponBase> Weapon;
