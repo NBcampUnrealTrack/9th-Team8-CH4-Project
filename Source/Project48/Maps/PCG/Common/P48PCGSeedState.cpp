@@ -40,7 +40,7 @@ void AP48PCGSeedState::SetMapSeed(const int32 Seed)
 {
 	if (UP48PCGSeedWorldSubsystem* Coordinator = GetWorld()->GetSubsystem<UP48PCGSeedWorldSubsystem>())
 	{
-		Coordinator->RequestGeneration(FMath::Max(1, State.RequiredPlayerCount), Seed);
+		Coordinator->RequestGenerationWithSeed(Seed);
 	}
 }
 

@@ -9,6 +9,7 @@ enum class EP48PCGGenerationPhase : uint8
 	Idle,
 	Cleaning,
 	Generating,
+	WaitingForPlayerCount,
 	WaitingForPlayerStarts,
 	WaitingForClients,
 	Ready,
@@ -33,7 +34,8 @@ struct FP48PCGGenerationSnapshot
 	UPROPERTY()
 	EP48PCGGenerationPhase Phase = EP48PCGGenerationPhase::Idle;
 
-	bool HasValidRequest() const { return Revision > 0 && RequiredPlayerCount > 0; }
+	bool HasValidSeed() const { return Revision > 0 && Seed != 0; }
+	bool HasConfirmedPlayerCount() const { return RequiredPlayerCount > 0; }
 	bool IsReady() const { return Phase == EP48PCGGenerationPhase::Ready; }
 };
 
@@ -44,5 +46,5 @@ struct FP48PCGGenerationContext
 	int32 GenerationId = 0;
 	int32 RequiredPlayerCount = 0;
 
-	bool IsValid() const { return GenerationId > 0 && RequiredPlayerCount > 0; }
+	bool IsValid() const { return GenerationId > 0 && Seed != 0; }
 };

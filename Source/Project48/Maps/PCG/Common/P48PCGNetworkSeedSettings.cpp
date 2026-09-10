@@ -8,6 +8,12 @@
 #include "Metadata/PCGMetadata.h"
 #include "Metadata/PCGMetadataAttribute.h"
 #include "Engine/World.h"
+#include "Misc/Guid.h"
+
+int32 UP48PCGNetworkSeedSettings::GenerateServerSeed()
+{
+	return FMath::Max(1, static_cast<int32>(GetTypeHash(FGuid::NewGuid()) & MAX_int32));
+}
 
 TArray<FPCGPinProperties> UP48PCGNetworkSeedSettings::OutputPinProperties() const
 {
@@ -29,11 +35,11 @@ bool FP48PCGNetworkSeedElement::ExecuteInternal(FPCGContext* Context) const
 	}
 
 	FP48PCGGenerationContext GenerationContext;
-	GenerationContext.Seed = Settings->EditorPreviewSeed;
+	GenerationContext.Seed = Context->ExecutionSource->GetExecutionState().GetSeed();
 	if (World->IsGameWorld())
 	{
 		UP48PCGSeedWorldSubsystem* Coordinator = World->GetSubsystem<UP48PCGSeedWorldSubsystem>();
-		if (!Coordinator || !Coordinator->GetSnapshot().HasValidRequest())
+		if (!Coordinator || !Coordinator->GetSnapshot().HasValidSeed())
 		{
 			return false;
 		}

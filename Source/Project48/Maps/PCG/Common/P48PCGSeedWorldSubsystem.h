@@ -9,7 +9,8 @@
 class AP48PCGSeedState;
 class APlayerController;
 class UPCGComponent;
-struct FP48MapGenerationRequestMessage;
+struct FPCGContextHandle;
+struct FP48MatchPlayerCountMessage;
 
 /** 한 월드의 PCG 생성 파이프라인과 네트워크 완료 합의를 조율합니다. */
 UCLASS()
@@ -30,31 +31,44 @@ public:
 
 	void SetReplicatedState(AP48PCGSeedState* InSeedState);
 	void HandleReplicatedSnapshot(const FP48PCGGenerationSnapshot& InSnapshot);
-	void RequestGeneration(int32 RequiredPlayerCount, int32 Seed);
+	/** 플레이어 수와 무관하게 새 Seed로 맵 생성을 시작합니다. */
+	void RequestGeneration();
+
+	/** SeedState의 기존 명시적 Seed API를 위한 Maps 내부 호환 경로입니다. */
+	void RequestGenerationWithSeed(int32 Seed);
+
+	/** 이미 생성 중이거나 생성된 맵에 플레이어 준비 정책만 갱신합니다. */
+	void SetRequiredPlayerCount(int32 RequiredPlayerCount);
+	void RegisterPlayerCountWaiter(int32 Revision, TWeakPtr<FPCGContextHandle> ContextHandle);
 	void RegisterConsumer(UPCGComponent* Component);
 	void NotifyClientGenerationComplete(APlayerController* PlayerController, int32 Revision);
 	void NotifyControllerJoined(APlayerController* PlayerController);
 	bool IsReadyForController(const APlayerController* PlayerController) const;
 
 private:
-	FGameplayMessageListenerHandle GenerationRequestHandle;
+	FGameplayMessageListenerHandle PlayerCountHandle;
 	TWeakObjectPtr<AP48PCGSeedState> SeedState;
 	FP48PCGGenerationSnapshot Snapshot;
 	TSet<TWeakObjectPtr<UPCGComponent>> Consumers;
 	TSet<TWeakObjectPtr<UPCGComponent>> CompletedConsumers;
 	TMap<TWeakObjectPtr<APlayerController>, int32> ReadyControllers;
 	TArray<TWeakObjectPtr<UPCGComponent>> PendingComponents;
+	TArray<TPair<int32, TWeakPtr<FPCGContextHandle>>> PlayerCountWaiters;
 	int32 LastClientReportedRevision = 0;
 	int32 LastCompletedRevision = 0;
+	int32 ConfirmedPlayerCount = 0;
 	bool bGenerationRunning = false;
 
-	void HandleGenerationRequested(FGameplayTag Channel, const FP48MapGenerationRequestMessage& Message);
+	void HandlePlayerCountChanged(FGameplayTag Channel, const FP48MatchPlayerCountMessage& Message);
 	void BeginGeneration();
 	void DiscoverConsumers();
+	void ApplySeedToConsumers();
 	void CleanupGraphs();
 	void GenerateGraphs();
 	void HandleGraphGenerated(UPCGComponent* Component);
 	void HandlePlayerStartReadinessChanged(int32 Revision);
+	void WakePlayerCountWaiters(int32 Revision);
+	void WakeAllPlayerCountWaiters();
 	void EvaluateCompletion();
 	void CompleteGeneration(bool bSucceeded);
 	void SetPhase(EP48PCGGenerationPhase Phase);

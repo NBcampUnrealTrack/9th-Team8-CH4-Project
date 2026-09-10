@@ -30,6 +30,7 @@ public:
 	}
 
 	void BeginGeneration(int32 Revision, int32 RequiredCount);
+	void UpdateRequiredCount(int32 Revision, int32 RequiredCount);
 	void ReportSelectedLayout(int32 Revision, int32 SelectedCount);
 	void RegisterPlayerStart(AP48PlayerStart* PlayerStart);
 	void UnregisterPlayerStart(AP48PlayerStart* PlayerStart);

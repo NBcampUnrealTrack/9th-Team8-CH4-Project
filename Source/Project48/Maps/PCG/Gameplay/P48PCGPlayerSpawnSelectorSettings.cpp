@@ -1,6 +1,7 @@
 #include "P48PCGPlayerSpawnSelectorSettings.h"
 
 #include "../Common/P48PCGSeedHelpers.h"
+#include "../Common/P48PCGSeedWorldSubsystem.h"
 #include "../Common/P48PCGSpawnAttributeNames.h"
 #include "../../Objects/Spawn/P48PlayerStartRegistrySubsystem.h"
 #include "Data/PCGPointData.h"
@@ -20,7 +21,7 @@ FText UP48PCGPlayerSpawnSelectorSettings::GetDefaultNodeTitle() const
 
 FText UP48PCGPlayerSpawnSelectorSettings::GetNodeTooltipText() const
 {
-	return LOCTEXT("NodeTooltip", "Selects the requested generation's PlayerStarts from safe surface candidates, preferring unused islands and horizontal separation.");
+	return LOCTEXT("NodeTooltip", "Waits for the confirmed runtime player count, then selects PlayerStarts from safe surface candidates while preferring unused islands and horizontal separation.");
 }
 #endif
 
@@ -66,7 +67,22 @@ bool FP48PCGPlayerSpawnSelectorElement::ExecuteInternal(FPCGContext* Context) co
 		return true;
 	}
 
-	int32 RequestedCount = GenerationContext.RequiredPlayerCount > 0
+	if (bGameWorld && GenerationContext.RequiredPlayerCount <= 0)
+	{
+		if (UP48PCGSeedWorldSubsystem* Coordinator = World->GetSubsystem<UP48PCGSeedWorldSubsystem>())
+		{
+			Context->bIsPaused = true;
+			Coordinator->RegisterPlayerCountWaiter(
+				GenerationContext.GenerationId,
+				Context->GetOrCreateHandle());
+			return false;
+		}
+
+		PCGE_LOG(Error, GraphAndLog, LOCTEXT("MissingSeedCoordinator", "PlayerStart generation cannot wait because the map seed coordinator is unavailable."));
+		return true;
+	}
+
+	int32 RequestedCount = bGameWorld
 		? GenerationContext.RequiredPlayerCount
 		: FMath::Max(1, Settings->SelectionSettings.SpawnCount);
 #if WITH_EDITORONLY_DATA

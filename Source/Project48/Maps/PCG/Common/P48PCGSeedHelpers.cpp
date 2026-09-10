@@ -14,7 +14,7 @@ bool P48ReadGenerationContext(FPCGContext* Context, FP48PCGGenerationContext& Ou
 		return false;
 	}
 
-	bool bFoundSeed = false;
+	bool bFoundParamData = false;
 	for (const FPCGTaggedData& Input : Context->InputData.GetInputsByPin(P48PCGSeedNames::InputPin))
 	{
 		const UPCGParamData* Data = Cast<UPCGParamData>(Input.Data);
@@ -25,7 +25,7 @@ bool P48ReadGenerationContext(FPCGContext* Context, FP48PCGGenerationContext& Ou
 		if (const auto* Attribute = Data->Metadata->GetConstTypedAttribute<int32>(P48PCGSeedNames::Seed))
 		{
 			OutContext.Seed = Attribute->GetValueFromItemKey(0);
-			bFoundSeed = true;
+			bFoundParamData = true;
 		}
 		if (const auto* Attribute = Data->Metadata->GetConstTypedAttribute<int32>(P48PCGSeedNames::GenerationId))
 		{
@@ -38,16 +38,21 @@ bool P48ReadGenerationContext(FPCGContext* Context, FP48PCGGenerationContext& Ou
 		break;
 	}
 
+	if (Context->ExecutionSource.IsValid())
+	{
+		// The component seed is the single editable/runtime-overridable map seed.
+		OutContext.Seed = Context->ExecutionSource->GetExecutionState().GetSeed();
+	}
+
 	UWorld* World = Context->ExecutionSource.IsValid() ? Context->ExecutionSource->GetExecutionState().GetWorld() : nullptr;
 	if (World && World->IsGameWorld())
 	{
 		if (const UP48PCGSeedWorldSubsystem* Coordinator = World->GetSubsystem<UP48PCGSeedWorldSubsystem>())
 		{
 			const FP48PCGGenerationContext WorldContext = Coordinator->GetGenerationContext();
-			if (!bFoundSeed)
-			{
-				OutContext.Seed = WorldContext.Seed;
-			}
+			// Runtime generation is authoritative. Never allow stale editor ParamData
+			// to replace the replicated seed on either the server or a client.
+			OutContext.Seed = WorldContext.Seed;
 			if (OutContext.GenerationId <= 0)
 			{
 				OutContext.GenerationId = WorldContext.GenerationId;
@@ -56,14 +61,17 @@ bool P48ReadGenerationContext(FPCGContext* Context, FP48PCGGenerationContext& Ou
 			{
 				OutContext.RequiredPlayerCount = WorldContext.RequiredPlayerCount;
 			}
-			return WorldContext.IsValid() || bFoundSeed;
+			return WorldContext.IsValid() || bFoundParamData;
 		}
 	}
-	return bFoundSeed;
+	return Context->ExecutionSource.IsValid() || bFoundParamData;
 }
 
 int32 P48ReadNetworkSeed(FPCGContext* Context)
 {
-	FP48PCGGenerationContext GenerationContext;
-	return P48ReadGenerationContext(Context, GenerationContext) ? GenerationContext.Seed : Context->GetSeed();
+	if (Context && Context->ExecutionSource.IsValid())
+	{
+		return Context->ExecutionSource->GetExecutionState().GetSeed();
+	}
+	return Context ? Context->GetSeed() : 0;
 }

@@ -29,6 +29,28 @@ void UP48PlayerStartRegistrySubsystem::BeginGeneration(const int32 Revision, con
 	RegisteredPlayerStarts.Reset();
 }
 
+void UP48PlayerStartRegistrySubsystem::UpdateRequiredCount(const int32 Revision, const int32 InRequiredCount)
+{
+	if (Revision != ActiveRevision || Revision <= 0)
+	{
+		return;
+	}
+
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(RegistrationTimeoutHandle);
+	}
+	RequiredCount = FMath::Max(0, InRequiredCount);
+	EvaluateReadiness();
+	if (bRegistrationSealed && RequiredCount > 0 && LayoutState == EP48PlayerStartLayoutState::Pending)
+	{
+		if (UWorld* World = GetWorld())
+		{
+			World->GetTimerManager().SetTimer(RegistrationTimeoutHandle, this, &ThisClass::HandleRegistrationTimeout, RegistrationGraceSeconds, false);
+		}
+	}
+}
+
 void UP48PlayerStartRegistrySubsystem::ReportSelectedLayout(const int32 Revision, const int32 InSelectedCount)
 {
 	if (Revision != ActiveRevision || Revision <= 0)
@@ -92,7 +114,7 @@ void UP48PlayerStartRegistrySubsystem::SealRegistration(const int32 Revision)
 	}
 	bRegistrationSealed = true;
 	EvaluateReadiness();
-	if (LayoutState == EP48PlayerStartLayoutState::Pending)
+	if (RequiredCount > 0 && LayoutState == EP48PlayerStartLayoutState::Pending)
 	{
 		GetWorld()->GetTimerManager().SetTimer(RegistrationTimeoutHandle, this, &ThisClass::HandleRegistrationTimeout, RegistrationGraceSeconds, false);
 	}
