@@ -2,6 +2,7 @@
 
 #include "PCGComponent.h"
 #include "../Common/P48PCGSeedHelpers.h"
+#include "../../Utilities/P48BridgeConnectionPolicy.h"
 
 #include "../Common/P48PCGSpawnAttributeNames.h"
 #include "Data/PCGPointData.h"
@@ -137,20 +138,6 @@ namespace P48AirStructure
 		return false;
 	}
 
-	bool IsBridgeValid(const FVector& Start, const FVector& End, const FP48BridgeConnectionRules& Rules)
-	{
-		const FVector Difference = End - Start;
-		const float HorizontalDistance = FVector2D(Difference.X, Difference.Y).Length();
-		const float HeightDifference = FMath::Abs(Difference.Z);
-		if (HorizontalDistance < Rules.MinHorizontalDistance || HeightDifference > Rules.MaxHeightDifference || Difference.Length() > Rules.MaxBridgeLength)
-		{
-			return false;
-		}
-
-		const float SlopeAngle = FMath::RadiansToDegrees(FMath::Atan2(HeightDifference, HorizontalDistance));
-		return SlopeAngle <= Rules.MaxSlopeAngle;
-	}
-
 	bool ConnectsToLayout(const FPreparedEntry& Candidate, const FVector& CandidateLocation, const TArray<FPlacedEntry>& Placed, const FP48AirStructureGenerationSettings& Settings)
 	{
 		if (Placed.IsEmpty())
@@ -169,7 +156,8 @@ namespace P48AirStructure
 			if (Existing.Entry->bCanConnectBridge)
 			{
 				const FVector ExistingAnchor = Existing.LocalLocation + FVector(0.0, 0.0, Existing.Entry->AnchorHeight);
-				if (IsBridgeValid(CandidateAnchor, ExistingAnchor, Settings.ConnectionRules))
+				float BridgeLength = 0.0f;
+				if (P48BridgeConnectionPolicy::IsGeometryValid(CandidateAnchor, ExistingAnchor, Settings.ConnectionRules, BridgeLength))
 				{
 					return true;
 				}

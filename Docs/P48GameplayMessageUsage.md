@@ -1,20 +1,22 @@
 # Maps Gameplay Message 사용 가이드
 
+GameMode에 실제로 생성 요청을 연결할 때는 `Docs/P48GameModeMapGenerationIntegration.md`를 참고합니다.
+
 ## 1. 이번 단계의 범위
 
-이번 단계에서는 GameMode 등 외부 시스템이 확정한 플레이어 수와 Seed를 `Maps` 모듈 영역에서 수신하는 경계까지만 다룹니다.
+이번 단계에서는 GameMode가 확정한 플레이어 수를 `Maps` 영역에서 수신하는 경계까지 다룹니다. Seed는 Maps가 생성합니다.
 
 - 송신 채널: `P48GameplayTags::Map::GenerationRequested`
 - 송신 Payload: `FP48MapGenerationRequestMessage`
 - 수신 위치: `UP48PCGSeedWorldSubsystem`
-- 수신 값: `PlayerCount`, `Seed`
+- 수신 값: `PlayerCount` (`Seed == 0`이면 Maps에서 자동 생성)
 - 실제 GameMode 송신 코드는 이 단계에서 수정하지 않습니다.
 
 현재 수신 흐름은 다음과 같습니다.
 
 ```text
 GameMode 또는 매치 시스템
-    └─ GenerationRequested Broadcast(PlayerCount, Seed)
+    └─ GenerationRequested Broadcast(PlayerCount, Seed=0)
           └─ UP48PCGSeedWorldSubsystem::HandleGenerationRequested
                 └─ RequestGeneration(PlayerCount, Seed)
 ```
@@ -32,7 +34,7 @@ GameMode 또는 매치 시스템
 프로젝트 내부의 상대 경로를 사용해야 하는 위치에서는 해당 소스 파일 기준으로 경로를 조정합니다.
 ex) Character의 경우 Character경로에 있는 Payloads헤더를 호출해 주세요
 
-## 3. 확정된 플레이어 수와 Seed 보내기
+## 3. 확정된 플레이어 수 보내기
 
 아래 코드는 GameMode에서 플레이어 수를 확정한 뒤 생성 요청을 보내는 예시입니다.
 
@@ -41,15 +43,15 @@ void AP48ExampleGameMode::RequestMapGeneration()
 {
 	// 세션/매치 정책에 따라 최종 확정된 인원이어야 합니다.
 	const int32 ConfirmedPlayerCount = GetNumPlayers();
-	const int32 MapSeed = 12345;
-
 	if (ConfirmedPlayerCount <= 0)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Map generation request was not sent: no confirmed players."));
 		return;
 	}
 
-	const FP48MapGenerationRequestMessage Message(ConfirmedPlayerCount, MapSeed);
+	FP48MapGenerationRequestMessage Message;
+	Message.PlayerCount = ConfirmedPlayerCount;
+	Message.Seed = 0; // Maps에서 자동 생성
 	const bool bBroadcast = UP48GameplayMessageLibrary::Broadcast(
 		this,
 		P48GameplayTags::Map::GenerationRequested,
@@ -99,7 +101,13 @@ void UP48PCGSeedWorldSubsystem::HandleGenerationRequested(
 	FGameplayTag Channel,
 	const FP48MapGenerationRequestMessage& Message)
 {
-	RequestGeneration(Message.PlayerCount, Message.Seed);
+	const int32 ResolvedSeed = Message.Seed != 0
+		? Message.Seed
+		: FMath::Max(
+			1,
+			static_cast<int32>(GetTypeHash(FGuid::NewGuid()) & MAX_int32));
+
+	RequestGeneration(Message.PlayerCount, ResolvedSeed);
 }
 ```
 

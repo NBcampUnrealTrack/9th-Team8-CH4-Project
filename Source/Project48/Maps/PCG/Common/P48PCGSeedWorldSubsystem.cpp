@@ -13,6 +13,7 @@
 #include "PCGComponent.h"
 #include "PCGGraph.h"
 #include "PCGNode.h"
+#include "Misc/Guid.h"
 #include "TimerManager.h"
 
 void UP48PCGSeedWorldSubsystem::OnWorldBeginPlay(UWorld& World)
@@ -128,7 +129,10 @@ void UP48PCGSeedWorldSubsystem::RequestGeneration(const int32 RequiredPlayerCoun
 
 void UP48PCGSeedWorldSubsystem::HandleGenerationRequested(FGameplayTag, const FP48MapGenerationRequestMessage& Message)
 {
-	RequestGeneration(Message.PlayerCount, Message.Seed);
+	const int32 ResolvedSeed = Message.Seed != 0
+		? Message.Seed
+		: FMath::Max(1, static_cast<int32>(GetTypeHash(FGuid::NewGuid()) & MAX_int32));
+	RequestGeneration(Message.PlayerCount, ResolvedSeed);
 }
 
 void UP48PCGSeedWorldSubsystem::BeginGeneration()
