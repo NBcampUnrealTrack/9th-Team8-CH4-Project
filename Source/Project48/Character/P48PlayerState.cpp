@@ -17,6 +17,7 @@ void AP48PlayerState::GetLifetimeReplicatedProps(
 	DOREPLIFETIME(AP48PlayerState, bIsMatchParticipant);
 	DOREPLIFETIME(AP48PlayerState, RoundWinCount);
 	DOREPLIFETIME(AP48PlayerState, StunCount);
+	DOREPLIFETIME(AP48PlayerState, bHasWeapon);
 }
 
 void AP48PlayerState::SetReady(bool bNewReady)
@@ -140,11 +141,27 @@ void AP48PlayerState::OnDeath()
 		return;
 	}
 	
-	bIsAlive = false;
-	
 	if (AP48SurvivalGameMode* SurvivalGM = GetWorld()->GetAuthGameMode<AP48SurvivalGameMode>())
 	{
 		SurvivalGM->NotifyPlayerEliminated(this);
-		UE_LOG(LogTemp, Error, TEXT("[%s] is died."), *GetName());
+		UE_LOG(LogTemp, Error, TEXT("[Server]: [%s] is died."), *GetName());
 	}
+}
+
+void AP48PlayerState::SetHasWeapon(bool NewHasWeapon)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+	bHasWeapon = NewHasWeapon;
+}
+
+void AP48PlayerState::ResetHasWeapon()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+	bHasWeapon = false;
 }

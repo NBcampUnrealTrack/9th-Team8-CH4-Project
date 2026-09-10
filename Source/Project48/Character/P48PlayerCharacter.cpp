@@ -7,6 +7,7 @@
 #include "Project48/UI/P48PlayerNameWidgetComponent.h"
 #include "Project48/UI/P48PlayerNameWidget.h"
 #include "Project48/Character/P48PlayerState.h"
+#include "Project48/Weapon/P48WeaponBase.h"
 
 #include "Components/CapsuleComponent.h"
 #include "EnhancedInputComponent.h"
@@ -18,6 +19,8 @@
 #include "Kismet/GameplayStatics.h"
 #include "Components/SphereComponent.h"
 #include "AbilitySystemBlueprintLibrary.h"
+#include "Engine/OverlapResult.h"
+#include "Net/UnrealNetwork.h"
 
 AP48PlayerCharacter::AP48PlayerCharacter()
 {
@@ -136,6 +139,7 @@ void AP48PlayerCharacter::BeginPlay()
 	{
 		PS->SetAlive(true);
 		PS->ResetStunCount();
+		PS->ResetHasWeapon();
 	}
 }
 
@@ -165,7 +169,15 @@ void AP48PlayerCharacter::PossessedBy(AController* NewController)
 	{
 		PS->SetAlive(true);
 		PS->ResetStunCount();
+		PS->ResetHasWeapon();
 	}
+}
+
+void AP48PlayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	
+	DOREPLIFETIME(AP48PlayerCharacter, Weapon);
 }
 
 void AP48PlayerCharacter::OnRep_PlayerState()
@@ -189,6 +201,7 @@ void AP48PlayerCharacter::OnRep_PlayerState()
 	{
 		PS->SetAlive(true);
 		PS->ResetStunCount();
+		PS->ResetHasWeapon();
 	}
 }
 
@@ -224,6 +237,10 @@ void AP48PlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInput
 		if (IA_Attack)
 		{
 			EIC->BindAction(IA_Attack, ETriggerEvent::Started, this, &AP48PlayerCharacter::AttackHandle);
+		}
+		if (IA_PickUp)
+		{
+			EIC->BindAction(IA_PickUp, ETriggerEvent::Started, this, &AP48PlayerCharacter::EquipWeaponHandle);
 		}
 	}
 }
@@ -453,19 +470,6 @@ void AP48PlayerCharacter::OnRightHandOverlap(
 	const FVector HitLoc = RightHandHitbox ? RightHandHitbox->GetComponentLocation() : OtherActor->GetActorLocation();
 	
 	Server_ApplyHit(OtherActor, HitLoc, HitDir);
-	/*
-	if (HasAuthority())
-	{
-	ApplyGroggyDamage(OtherActor);
-	if (AP48PlayerCharacter* TargetCharacter = Cast<AP48PlayerCharacter>(OtherActor))
-	{
-	TargetCharacter->OnHit(HitLoc, HitDir, 60000.f);
-	}
-	}
-	else
-	{
-	Server_ApplyHit(OtherActor, HitLoc, HitDir);
-	}*/
 }
 
 void AP48PlayerCharacter::OnHit(const FVector& HitLocation, const FVector& HitDirection, float ImpulseStrength)
@@ -696,5 +700,125 @@ void AP48PlayerCharacter::OnStunTagChanged(const struct FGameplayTag CallbackTag
 				GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Yellow, TEXT("MoveMode: MOVE_Walking"));
 			}
 		}
+	}
+}
+
+void AP48PlayerCharacter::EquipWeaponHandle()
+{
+	if (!IsLocallyControlled())
+	{
+		return;
+	}
+	
+	AP48PlayerState* PS = GetPlayerState<AP48PlayerState>();
+	if (!PS)
+	{
+		return;
+	}
+	
+	if (PS->HasWeapon())
+	{
+		//TODO DropWeapon 예정
+		return;
+	}
+	
+	const FVector Center = GetActorLocation();
+	const float SearchRadius = 150.f;
+	
+	FCollisionObjectQueryParams ObjectParams(FCollisionObjectQueryParams::AllDynamicObjects);
+	FCollisionShape Sphere = FCollisionShape::MakeSphere(SearchRadius);
+	
+	TArray<FOverlapResult> Overlaps;
+	GetWorld()->OverlapMultiByObjectType(Overlaps, Center, FQuat::Identity, ObjectParams, Sphere);
+	
+	AP48WeaponBase* ClosestWeapon = nullptr;
+	
+	float MinDist = MAX_FLT;
+	
+	for (const FOverlapResult& Overlap : Overlaps)
+	{
+		if (AP48WeaponBase* FoundWeapon = Cast<AP48WeaponBase>(Overlap.GetActor()))
+		{
+			if (FoundWeapon->GetOwner() == nullptr)
+			{
+				const float Dist = FVector::DistSquared(Center, FoundWeapon->GetActorLocation());
+				
+				if (Dist < MinDist)
+				{
+					MinDist = Dist;
+					ClosestWeapon = FoundWeapon;
+				}
+			}
+		}
+	}
+	
+	if (ClosestWeapon)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Client]: 발견: %s -> Server_EquipWeapon호출"), *ClosestWeapon->GetName());
+		Server_EquipWeapon(ClosestWeapon);
+	}
+}
+
+void AP48PlayerCharacter::Server_EquipWeapon_Implementation(AP48WeaponBase* NewWeapon)
+{
+	if (!HasAuthority() || !NewWeapon)
+	{
+		return;
+	}
+	
+	if (NewWeapon->GetOwner())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("다른 사람 소유 무기"));
+		return;
+	}
+	
+	UE_LOG(LogTemp, Warning, TEXT("Server_EquipWeapon"));
+	
+	Weapon = NewWeapon;
+	
+	OnRep_Weapon();
+	
+	if (AP48PlayerState* PS = GetPlayerState<AP48PlayerState>())
+	{
+		PS->SetHasWeapon(true);
+	}
+	
+	
+}
+
+void AP48PlayerCharacter::OnRep_Weapon()
+{
+	if (Weapon)
+	{
+		UStaticMeshComponent* WeaponMesh = Weapon->FindComponentByClass<UStaticMeshComponent>();
+		if (!WeaponMesh)
+		{
+			UE_LOG(LogTemp, Error, TEXT("Can't find staticMesh"));
+			return;
+		}
+		
+		WeaponMesh->SetSimulatePhysics(false);
+		WeaponMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		
+		const FVector WeaponScale = Weapon->GetActorScale3D();
+		
+		const FAttachmentTransformRules AttachRules(
+			EAttachmentRule::SnapToTarget,
+			EAttachmentRule::SnapToTarget,
+			EAttachmentRule::KeepWorld,
+			false
+			);
+		
+		Weapon->AttachToComponent(GetMesh(), AttachRules, TEXT("weaponslot_r"));
+		Weapon->SetActorScale3D(WeaponScale);
+		
+		const FWeaponDataRow& Data = Weapon->GetWeaponData();
+		WeaponMesh->SetRelativeLocationAndRotation(Data.RelativeLocation, Data.RelativeRotator);
+		
+		UE_LOG(LogTemp, Warning, TEXT("[Client] 무기 소켓 장착 성공: %s"), *Weapon->GetName());
+	}
+	else
+	{
+		//TODO: 나중에 무기 버릴 때 
 	}
 }
