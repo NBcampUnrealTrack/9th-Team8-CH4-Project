@@ -9,6 +9,7 @@
 #include "../../../GameplayMessageLibrary/Core/P48GameplayMessageTags.h"
 #include "../../../GameplayMessageLibrary/Map/P48MapMessagePayloads.h"
 #include "../../../GameplayMessageLibrary/Match/P48MatchMessagePayloads.h"
+#include "../../../Character/P48PlayerState.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "PCGComponent.h"
@@ -20,17 +21,22 @@
 void UP48PCGSeedWorldSubsystem::OnWorldBeginPlay(UWorld& World)
 {
 	Super::OnWorldBeginPlay(World);
-	PlayerCountHandle = UP48GameplayMessageLibrary::Listen(
+	PlayerCountChangedHandle = UP48GameplayMessageLibrary::Listen(
 		this,
 		P48GameplayTags::Match::PlayerCountChanged,
 		&ThisClass::HandlePlayerCountChanged);
+	if (!PlayerCountChangedHandle.IsValid())
+	{
+		UE_LOG(LogTemp, Error, TEXT("[P48PCG] Failed to subscribe to confirmed player counts in %s."), *World.GetName());
+	}
 
 	if (UP48PlayerStartRegistrySubsystem* Registry = World.GetSubsystem<UP48PlayerStartRegistrySubsystem>())
 	{
 		Registry->OnReadinessChanged.AddUObject(this, &ThisClass::HandlePlayerStartReadinessChanged);
 	}
 	DiscoverConsumers();
-	if (World.GetNetMode() != NM_Client)
+	// 로비처럼 NetworkSeed PCG 그래프가 없는 월드에서는 맵 생성 파이프라인을 시작하지 않는다.
+	if (World.GetNetMode() != NM_Client && !Consumers.IsEmpty())
 	{
 		World.GetTimerManager().SetTimerForNextTick(this, &ThisClass::RequestGeneration);
 	}
@@ -38,7 +44,8 @@ void UP48PCGSeedWorldSubsystem::OnWorldBeginPlay(UWorld& World)
 
 void UP48PCGSeedWorldSubsystem::Deinitialize()
 {
-	UP48GameplayMessageLibrary::StopListening(PlayerCountHandle);
+	if (GetWorld()) { GetWorld()->GetTimerManager().ClearTimer(ClientReportTimer); }
+	UP48GameplayMessageLibrary::StopListening(PlayerCountChangedHandle);
 	if (UP48PlayerStartRegistrySubsystem* Registry = GetWorld() ? GetWorld()->GetSubsystem<UP48PlayerStartRegistrySubsystem>() : nullptr)
 	{
 		Registry->OnReadinessChanged.RemoveAll(this);
@@ -74,20 +81,23 @@ void UP48PCGSeedWorldSubsystem::SetReplicatedState(AP48PCGSeedState* InSeedState
 		return;
 	}
 	SeedState = InSeedState;
-	HandleReplicatedSnapshot(InSeedState->State);
+	// A new replication actor must not erase a roster received before Seed creation.
+	if (InSeedState->State.HasValidSeed()) { HandleReplicatedSnapshot(InSeedState->State); }
 }
 
 void UP48PCGSeedWorldSubsystem::HandleReplicatedSnapshot(const FP48PCGGenerationSnapshot& InSnapshot)
 {
+	if (!InSnapshot.HasValidSeed()) { return; }
 	const bool bIsNewGeneration = InSnapshot.HasValidSeed() && InSnapshot.Revision != Snapshot.Revision;
 	if (bIsNewGeneration)
 	{
 		WakePlayerCountWaiters(Snapshot.Revision);
 	}
 	Snapshot = InSnapshot;
+	ConfirmedPlayerCount = FMath::Max(0, InSnapshot.RequiredPlayerCount);
+	bPlayerCountLocked |= InSnapshot.HasConfirmedPlayerCount();
 	if (InSnapshot.HasConfirmedPlayerCount())
 	{
-		ConfirmedPlayerCount = InSnapshot.RequiredPlayerCount;
 		WakePlayerCountWaiters(InSnapshot.Revision);
 	}
 	if (bIsNewGeneration)
@@ -153,27 +163,46 @@ void UP48PCGSeedWorldSubsystem::RequestGenerationWithSeed(const int32 Seed)
 	NewSnapshot.RequiredPlayerCount = ConfirmedPlayerCount;
 	NewSnapshot.Phase = EP48PCGGenerationPhase::Cleaning;
 	StateActor->SetGenerationSnapshot(NewSnapshot);
+	// Retry login decisions deferred until the Maps listener was registered.
+	if (AP48GameModeBase* GameMode = World->GetAuthGameMode<AP48GameModeBase>())
+	{
+		GameMode->NotifyMapGenerationReadinessChanged();
+	}
 }
 
 void UP48PCGSeedWorldSubsystem::SetRequiredPlayerCount(const int32 RequiredPlayerCount)
 {
+	if (bDebugPlayerCountOverride) { return; }
 	UWorld* World = GetWorld();
-	if (!World || World->GetNetMode() == NM_Client || RequiredPlayerCount <= 0)
+	if (!World || World->GetNetMode() == NM_Client || RequiredPlayerCount < 0)
 	{
+		return;
+	}
+	if (bPlayerCountLocked && RequiredPlayerCount > ConfirmedPlayerCount)
+	{
+		UE_LOG(LogTemp, Display,
+			TEXT("[P48PlayerStartPolicy] Ignored late player-count increase: Locked=%d Requested=%d Revision=%d."),
+			ConfirmedPlayerCount, RequiredPlayerCount, Snapshot.Revision);
 		return;
 	}
 
 	ConfirmedPlayerCount = RequiredPlayerCount;
+	bPlayerCountLocked |= RequiredPlayerCount > 0;
 	if (!Snapshot.HasValidSeed())
 	{
 		return;
 	}
 
 	Snapshot.RequiredPlayerCount = RequiredPlayerCount;
-	if (Snapshot.Phase == EP48PCGGenerationPhase::WaitingForPlayerCount)
+	if (RequiredPlayerCount > 0 && Snapshot.Phase == EP48PCGGenerationPhase::WaitingForPlayerCount)
 	{
 		Snapshot.Phase = EP48PCGGenerationPhase::Generating;
 	}
+	else if (RequiredPlayerCount == 0 && AreServerGraphsComplete())
+	{
+		Snapshot.Phase = EP48PCGGenerationPhase::WaitingForPlayerCount;
+	}
+
 	if (AP48PCGSeedState* StateActor = SeedState.Get(); StateActor && StateActor->HasAuthority())
 	{
 		StateActor->SetGenerationSnapshot(Snapshot);
@@ -182,7 +211,23 @@ void UP48PCGSeedWorldSubsystem::SetRequiredPlayerCount(const int32 RequiredPlaye
 	{
 		Registry->UpdateRequiredCount(Snapshot.Revision, RequiredPlayerCount);
 	}
+	if (RequiredPlayerCount > 0)
+	{
+		WakePlayerCountWaiters(Snapshot.Revision);
+	}
 	EvaluateCompletion();
+}
+
+void UP48PCGSeedWorldSubsystem::ApplyDebugPlayerCount(const int32 PlayerCount)
+{
+#if !UE_BUILD_SHIPPING
+	if (!GetWorld() || GetWorld()->GetNetMode() == NM_Client || bDebugPlayerCountOverride || PlayerCount <= 0) { return; }
+	// Debug bypasses only the roster lock/wait, never map generation or collision checks.
+	bPlayerCountLocked = false;
+	SetRequiredPlayerCount(PlayerCount);
+	bDebugPlayerCountOverride = true;
+	UE_LOG(LogTemp, Display, TEXT("[P48PlayerStartDebug] Revision=%d PlayerCount=%d. Broadcast counts are ignored for this debug session."), Snapshot.Revision, PlayerCount);
+#endif
 }
 
 void UP48PCGSeedWorldSubsystem::RegisterPlayerCountWaiter(
@@ -207,13 +252,16 @@ void UP48PCGSeedWorldSubsystem::RegisterPlayerCountWaiter(
 	}
 }
 
-void UP48PCGSeedWorldSubsystem::HandlePlayerCountChanged(FGameplayTag, const FP48MatchPlayerCountMessage& Message)
+void UP48PCGSeedWorldSubsystem::HandlePlayerCountChanged(
+	FGameplayTag,
+	const FP48MatchPlayerCountMessage& Message)
 {
-	SetRequiredPlayerCount(Message.PlayerCount);
+	SetRequiredPlayerCount(FMath::Max(0, Message.PlayerCount));
 }
 
 void UP48PCGSeedWorldSubsystem::BeginGeneration()
 {
+	if (GetWorld()) { GetWorld()->GetTimerManager().ClearTimer(ClientReportTimer); }
 	bGenerationRunning = true;
 	CompletedConsumers.Reset();
 	ReadyControllers.Reset();
@@ -235,6 +283,33 @@ void UP48PCGSeedWorldSubsystem::BeginGeneration()
 	}
 }
 
+bool UP48PCGSeedWorldSubsystem::GraphUsesNetworkSeed(const UPCGGraph* Graph)
+{
+	return Graph && !Graph->FindNodesWithSettings(UP48PCGNetworkSeedSettings::StaticClass(), true).IsEmpty();
+}
+
+bool UP48PCGSeedWorldSubsystem::HasNetworkSeedConsumer(UWorld* World)
+{
+	if (!World)
+	{
+		return false;
+	}
+
+	for (TActorIterator<AActor> It(World); It; ++It)
+	{
+		TArray<UPCGComponent*> Components;
+		It->GetComponents(Components);
+		for (const UPCGComponent* Component : Components)
+		{
+			if (Component && GraphUsesNetworkSeed(Component->GetGraph()))
+			{
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
 void UP48PCGSeedWorldSubsystem::DiscoverConsumers()
 {
 	UWorld* World = GetWorld();
@@ -242,24 +317,24 @@ void UP48PCGSeedWorldSubsystem::DiscoverConsumers()
 	{
 		return;
 	}
+
+	for (auto It = Consumers.CreateIterator(); It; ++It)
+	{
+		if (!It->IsValid())
+		{
+			It.RemoveCurrent();
+		}
+	}
+
 	for (TActorIterator<AActor> It(World); It; ++It)
 	{
 		TArray<UPCGComponent*> Components;
 		It->GetComponents(Components);
 		for (UPCGComponent* Component : Components)
 		{
-			const UPCGGraph* Graph = Component ? Component->GetGraph() : nullptr;
-			if (!Graph)
+			if (Component && GraphUsesNetworkSeed(Component->GetGraph()))
 			{
-				continue;
-			}
-			for (const UPCGNode* Node : Graph->GetNodes())
-			{
-				if (Node && Cast<UP48PCGNetworkSeedSettings>(Node->GetSettings()))
-				{
-					RegisterConsumer(Component);
-					break;
-				}
+				RegisterConsumer(Component);
 			}
 		}
 	}
@@ -349,19 +424,8 @@ void UP48PCGSeedWorldSubsystem::HandleGraphGenerated(UPCGComponent* Component)
 	}
 	if (World->GetNetMode() == NM_Client)
 	{
-		if (LastClientReportedRevision == Snapshot.Revision)
-		{
-			return;
-		}
-		for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
-		{
-			if (AP48PlayerController* Controller = Cast<AP48PlayerController>(It->Get()); Controller && Controller->IsLocalController())
-			{
-				LastClientReportedRevision = Snapshot.Revision;
-				Controller->ReportMapGenerationComplete(Snapshot.Revision);
-				break;
-			}
-		}
+		World->GetTimerManager().SetTimer(ClientReportTimer, this, &ThisClass::TryReportClientCompletion, 0.5f, true);
+		TryReportClientCompletion();
 		return;
 	}
 
@@ -375,12 +439,33 @@ void UP48PCGSeedWorldSubsystem::HandleGraphGenerated(UPCGComponent* Component)
 	EvaluateCompletion();
 }
 
+void UP48PCGSeedWorldSubsystem::TryReportClientCompletion()
+{
+	UWorld* World = GetWorld();
+	if (!World || World->GetNetMode() != NM_Client) { return; }
+	if (Snapshot.IsReady() || Snapshot.Phase == EP48PCGGenerationPhase::Failed)
+	{
+		World->GetTimerManager().ClearTimer(ClientReportTimer);
+		return;
+	}
+	if (!AreServerGraphsComplete()) { return; }
+	for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
+	{
+		if (AP48PlayerController* Controller = Cast<AP48PlayerController>(It->Get()); Controller && Controller->IsLocalController())
+		{
+			Controller->ReportMapGenerationComplete(Snapshot.Revision);
+		}
+	}
+}
+
 void UP48PCGSeedWorldSubsystem::NotifyClientGenerationComplete(APlayerController* PlayerController, const int32 Revision)
 {
 	if (!GetWorld() || GetWorld()->GetNetMode() == NM_Client || !IsValid(PlayerController) || Revision != Snapshot.Revision)
 	{
 		return;
 	}
+	// Keep early reports. GetReadyControllerCount only counts confirmed participants.
+	if (PlayerController->GetWorld() != GetWorld()) { return; }
 	ReadyControllers.FindOrAdd(PlayerController) = Revision;
 	EvaluateCompletion();
 }
@@ -391,16 +476,17 @@ void UP48PCGSeedWorldSubsystem::NotifyControllerJoined(APlayerController* Player
 	{
 		return;
 	}
-	if (!PlayerController->IsLocalController() || GetWorld()->GetNetMode() == NM_DedicatedServer)
-	{
-		ReadyControllers.Remove(PlayerController);
-	}
 	EvaluateCompletion();
 }
 
 bool UP48PCGSeedWorldSubsystem::IsReadyForController(const APlayerController* PlayerController) const
 {
 	if (!IsValid(PlayerController) || !Snapshot.IsReady())
+	{
+		return false;
+	}
+	const AP48PlayerState* PlayerState = PlayerController->GetPlayerState<AP48PlayerState>();
+	if (!IsValid(PlayerState) || !PlayerState->IsMatchParticipant())
 	{
 		return false;
 	}
@@ -453,7 +539,7 @@ void UP48PCGSeedWorldSubsystem::WakeAllPlayerCountWaiters()
 void UP48PCGSeedWorldSubsystem::EvaluateCompletion()
 {
 	UWorld* World = GetWorld();
-	if (!World || World->GetNetMode() == NM_Client || !AreServerGraphsComplete())
+	if (!World || World->GetNetMode() == NM_Client || Snapshot.Phase == EP48PCGGenerationPhase::Failed || !AreServerGraphsComplete())
 	{
 		return;
 	}
@@ -495,7 +581,7 @@ bool UP48PCGSeedWorldSubsystem::AreServerGraphsComplete() const
 	}
 	for (const TWeakObjectPtr<UPCGComponent>& Consumer : Consumers)
 	{
-		if (Consumer.IsValid() && !CompletedConsumers.Contains(Consumer))
+		if (!Consumer.IsValid() || !CompletedConsumers.Contains(Consumer))
 		{
 			return false;
 		}
@@ -518,6 +604,13 @@ int32 UP48PCGSeedWorldSubsystem::GetReadyControllerCount() const
 		{
 			continue;
 		}
+
+		const AP48PlayerState* PlayerState = Controller->GetPlayerState<AP48PlayerState>();
+		if (!IsValid(PlayerState) || !PlayerState->IsMatchParticipant())
+		{
+			continue;
+		}
+
 		if ((Controller->IsLocalController() && World->GetNetMode() != NM_DedicatedServer) || ReadyControllers.FindRef(Controller) == Snapshot.Revision)
 		{
 			++Count;
@@ -528,19 +621,25 @@ int32 UP48PCGSeedWorldSubsystem::GetReadyControllerCount() const
 
 void UP48PCGSeedWorldSubsystem::CompleteGeneration(const bool bSucceeded)
 {
-	if (LastCompletedRevision == Snapshot.Revision || Snapshot.Revision <= 0)
+	if (Snapshot.Revision <= 0)
 	{
 		return;
 	}
+	const bool bAlreadyReported = LastCompletedRevision == Snapshot.Revision;
+	const EP48PCGGenerationPhase NewPhase = bSucceeded ? EP48PCGGenerationPhase::Ready : EP48PCGGenerationPhase::Failed;
+	const bool bPhaseChanged = Snapshot.Phase != NewPhase;
 	bGenerationRunning = false;
 	LastCompletedRevision = Snapshot.Revision;
-	SetPhase(bSucceeded ? EP48PCGGenerationPhase::Ready : EP48PCGGenerationPhase::Failed);
-	UP48GameplayMessageLibrary::Broadcast(
-		this,
-		P48GameplayTags::Map::GenerationCompleted,
-		FP48MapGenerationCompletedMessage(Snapshot.Revision, Snapshot.Seed, bSucceeded));
-
-	UE_LOG(LogTemp, Display, TEXT("[P48PCG] Generation=%d Seed=%d Players=%d Succeeded=%d"), Snapshot.Revision, Snapshot.Seed, Snapshot.RequiredPlayerCount, bSucceeded);
+	SetPhase(NewPhase);
+	if (!bAlreadyReported)
+	{
+		UP48GameplayMessageLibrary::Broadcast(
+			this,
+			P48GameplayTags::Map::GenerationCompleted,
+			FP48MapGenerationCompletedMessage(Snapshot.Revision, Snapshot.Seed, bSucceeded));
+		UE_LOG(LogTemp, Display, TEXT("[P48PCG] Generation=%d Seed=%d Players=%d Succeeded=%d"), Snapshot.Revision, Snapshot.Seed, Snapshot.RequiredPlayerCount, bSucceeded);
+	}
+	if (bAlreadyReported && !bPhaseChanged) { return; }
 	if (AP48GameModeBase* GameMode = GetWorld() ? GetWorld()->GetAuthGameMode<AP48GameModeBase>() : nullptr)
 	{
 		GameMode->NotifyMapGenerationReadinessChanged();

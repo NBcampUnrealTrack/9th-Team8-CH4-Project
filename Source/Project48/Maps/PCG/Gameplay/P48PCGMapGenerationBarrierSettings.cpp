@@ -1,5 +1,6 @@
 #include "P48PCGMapGenerationBarrierSettings.h"
 
+#include "../Common/P48PCGSeedHelpers.h"
 #include "PCGContext.h"
 
 #define LOCTEXT_NAMESPACE "P48PCGMapGenerationBarrier"
@@ -24,6 +25,7 @@ TArray<FPCGPinProperties> UP48PCGMapGenerationBarrierSettings::InputPinPropertie
 	TArray<FPCGPinProperties> Pins;
 	Pins.Emplace_GetRef(IslandPointsPin, EPCGDataType::Point).SetRequiredPin();
 	Pins.Emplace_GetRef(DependenciesPin, EPCGDataType::Any).SetRequiredPin();
+	Pins.Emplace(P48PCGSeedNames::InputPin, EPCGDataType::Param);
 	return Pins;
 }
 

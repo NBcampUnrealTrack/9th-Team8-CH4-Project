@@ -67,6 +67,17 @@ bool FP48PCGPlayerSpawnSelectorElement::ExecuteInternal(FPCGContext* Context) co
 		return true;
 	}
 
+#if !UE_BUILD_SHIPPING
+	if (bGameWorld && !bClient && Settings->bOverridePlayerCountForDebug)
+	{
+		if (UP48PCGSeedWorldSubsystem* Coordinator = World->GetSubsystem<UP48PCGSeedWorldSubsystem>())
+		{
+			Coordinator->ApplyDebugPlayerCount(FMath::Max(1, Settings->DebugPlayerCount));
+			GenerationContext = Coordinator->GetGenerationContext();
+		}
+	}
+#endif
+
 	if (bGameWorld && GenerationContext.RequiredPlayerCount <= 0)
 	{
 		if (UP48PCGSeedWorldSubsystem* Coordinator = World->GetSubsystem<UP48PCGSeedWorldSubsystem>())
@@ -96,7 +107,14 @@ bool FP48PCGPlayerSpawnSelectorElement::ExecuteInternal(FPCGContext* Context) co
 		? World->GetSubsystem<UP48PlayerStartRegistrySubsystem>()
 		: nullptr;
 	bool bLayoutReported = false;
-	for (const FPCGTaggedData& Input : Context->InputData.GetInputsByPin(PCGPinConstants::DefaultInputLabel))
+	const TArray<FPCGTaggedData> Inputs = Context->InputData.GetInputsByPin(PCGPinConstants::DefaultInputLabel);
+	if (Inputs.Num() != 1)
+	{
+		PCGE_LOG(Error, GraphAndLog, LOCTEXT("SingleCandidateSet", "Merge candidate point data before Player Spawn Selector; exactly one candidate set is required."));
+		if (Registry) { Registry->ReportSelectedStarts(GenerationContext.GenerationId, {}); }
+		return true;
+	}
+	for (const FPCGTaggedData& Input : Inputs)
 	{
 		const UPCGBasePointData* InputPoints = Cast<UPCGBasePointData>(Input.Data);
 		if (!InputPoints || !InputPoints->Metadata)
@@ -115,7 +133,8 @@ bool FP48PCGPlayerSpawnSelectorElement::ExecuteInternal(FPCGContext* Context) co
 		TArray<int32> Remaining;
 		for (int32 Index = 0; Index < InputPoints->GetNumPoints(); ++Index)
 		{
-			if (!CanSpawnAttribute || CanSpawnAttribute->GetValueFromItemKey(InputPoints->GetMetadataEntry(Index)))
+			if (IslandAttribute->GetValueFromItemKey(InputPoints->GetMetadataEntry(Index)) >= 0
+				&& (!CanSpawnAttribute || CanSpawnAttribute->GetValueFromItemKey(InputPoints->GetMetadataEntry(Index))))
 			{
 				Remaining.Add(Index);
 			}
@@ -186,10 +205,11 @@ bool FP48PCGPlayerSpawnSelectorElement::ExecuteInternal(FPCGContext* Context) co
 			auto* SlotAttribute = OutputMetadata->CreateAttribute<int32>(P48PCGSpawnAttributeNames::SpawnSlotIndex, INDEX_NONE, false, false);
 			auto* GenerationAttribute = OutputMetadata->CreateAttribute<int32>(P48PCGSpawnAttributeNames::GenerationId, 0, false, false);
 			TPCGValueRange<FTransform> Transforms = OutputPoints->GetTransformValueRange();
+			const float EffectiveSpawnHeight = FMath::Max(0.0f, Settings->SelectionSettings.SpawnHeight);
 			for (int32 Index = 0; Index < OutputPoints->GetNumPoints(); ++Index)
 			{
 				FTransform Transform = Transforms[Index];
-				Transform.AddToTranslation(FVector(0.0, 0.0, Settings->SelectionSettings.SpawnHeight));
+				Transform.AddToTranslation(FVector(0.0, 0.0, EffectiveSpawnHeight));
 				Transforms[Index] = Transform;
 				const PCGMetadataEntryKey Entry = OutputPoints->GetMetadataEntry(Index);
 				SlotAttribute->SetValue(Entry, Index);
@@ -203,7 +223,13 @@ bool FP48PCGPlayerSpawnSelectorElement::ExecuteInternal(FPCGContext* Context) co
 		}
 		if (Registry)
 		{
-			Registry->ReportSelectedLayout(GenerationContext.GenerationId, Selected.Num());
+			TArray<FP48SelectedPlayerStart> Starts;
+			for (int32 Index = 0; Index < OutputPoints->GetNumPoints(); ++Index)
+			{
+				Starts.Add({OutputPoints->GetTransform(Index).GetLocation(),
+					IslandAttribute->GetValueFromItemKey(InputPoints->GetMetadataEntry(Selected[Index]))});
+			}
+			Registry->ReportSelectedStarts(GenerationContext.GenerationId, Starts);
 			bLayoutReported = true;
 		}
 

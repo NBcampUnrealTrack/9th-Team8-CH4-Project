@@ -34,7 +34,6 @@ void AP48PlayerStart::RegisterWithRegistry()
 	}
 	if (UP48PlayerStartRegistrySubsystem* Registry = GetWorld()->GetSubsystem<UP48PlayerStartRegistrySubsystem>())
 	{
-		Registry->RegisterPlayerStart(this);
-		bRegisteredWithRegistry = GenerationId > 0;
+		bRegisteredWithRegistry = Registry->RegisterPlayerStart(this);
 	}
 }

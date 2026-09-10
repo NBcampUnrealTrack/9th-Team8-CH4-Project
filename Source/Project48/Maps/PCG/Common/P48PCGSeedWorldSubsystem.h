@@ -9,6 +9,7 @@
 class AP48PCGSeedState;
 class APlayerController;
 class UPCGComponent;
+class UPCGGraph;
 struct FPCGContextHandle;
 struct FP48MatchPlayerCountMessage;
 
@@ -27,7 +28,9 @@ public:
 	}
 
 	const FP48PCGGenerationSnapshot& GetSnapshot() const { return Snapshot; }
+	static bool HasNetworkSeedConsumer(UWorld* World);
 	FP48PCGGenerationContext GetGenerationContext() const;
+	bool CanReceivePlayerCount() const { return PlayerCountChangedHandle.IsValid(); }
 
 	void SetReplicatedState(AP48PCGSeedState* InSeedState);
 	void HandleReplicatedSnapshot(const FP48PCGGenerationSnapshot& InSnapshot);
@@ -39,6 +42,8 @@ public:
 
 	/** 이미 생성 중이거나 생성된 맵에 플레이어 준비 정책만 갱신합니다. */
 	void SetRequiredPlayerCount(int32 RequiredPlayerCount);
+	/** Non-shipping server debug override. Call before selecting the PlayerStart layout. */
+	void ApplyDebugPlayerCount(int32 PlayerCount);
 	void RegisterPlayerCountWaiter(int32 Revision, TWeakPtr<FPCGContextHandle> ContextHandle);
 	void RegisterConsumer(UPCGComponent* Component);
 	void NotifyClientGenerationComplete(APlayerController* PlayerController, int32 Revision);
@@ -46,7 +51,7 @@ public:
 	bool IsReadyForController(const APlayerController* PlayerController) const;
 
 private:
-	FGameplayMessageListenerHandle PlayerCountHandle;
+	FGameplayMessageListenerHandle PlayerCountChangedHandle;
 	TWeakObjectPtr<AP48PCGSeedState> SeedState;
 	FP48PCGGenerationSnapshot Snapshot;
 	TSet<TWeakObjectPtr<UPCGComponent>> Consumers;
@@ -54,14 +59,18 @@ private:
 	TMap<TWeakObjectPtr<APlayerController>, int32> ReadyControllers;
 	TArray<TWeakObjectPtr<UPCGComponent>> PendingComponents;
 	TArray<TPair<int32, TWeakPtr<FPCGContextHandle>>> PlayerCountWaiters;
-	int32 LastClientReportedRevision = 0;
 	int32 LastCompletedRevision = 0;
 	int32 ConfirmedPlayerCount = 0;
+	bool bPlayerCountLocked = false;
+	bool bDebugPlayerCountOverride = false;
 	bool bGenerationRunning = false;
+	FTimerHandle ClientReportTimer;
+	void TryReportClientCompletion();
 
 	void HandlePlayerCountChanged(FGameplayTag Channel, const FP48MatchPlayerCountMessage& Message);
 	void BeginGeneration();
 	void DiscoverConsumers();
+	static bool GraphUsesNetworkSeed(const UPCGGraph* Graph);
 	void ApplySeedToConsumers();
 	void CleanupGraphs();
 	void GenerateGraphs();

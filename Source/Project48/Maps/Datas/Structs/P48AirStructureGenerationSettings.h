@@ -19,6 +19,9 @@ struct PROJECT48_API FP48AirStructureGenerationSettings
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Air")
 	EP48AirPlacementMode PlacementMode = EP48AirPlacementMode::SkyIsland;
+	/** 배치 시도 초기에 덜 사용한 구조물을 우선합니다. 거리/충돌 조건을 만족하지 않는 종류까지 보장하지는 않습니다. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Air")
+	bool bDistributeStructureTypesBeforeRepeating = true;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Air", meta = (ClampMin = "1"))
 	int32 TargetCount = 10;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Air")

@@ -11,6 +11,7 @@ void UP48PlayerStartRegistrySubsystem::Deinitialize()
 		World->GetTimerManager().ClearTimer(RegistrationTimeoutHandle);
 	}
 	RegisteredPlayerStarts.Reset();
+	SelectedStarts.Reset();
 	OnReadinessChanged.Clear();
 	Super::Deinitialize();
 }
@@ -27,6 +28,10 @@ void UP48PlayerStartRegistrySubsystem::BeginGeneration(const int32 Revision, con
 	bRegistrationSealed = false;
 	LayoutState = EP48PlayerStartLayoutState::Pending;
 	RegisteredPlayerStarts.Reset();
+	SelectedStarts.Reset();
+
+	// PCG owns actor cleanup. Clearing this registry prevents old starts from
+	// being claimed without destroying manually placed actors of the same class.
 }
 
 void UP48PlayerStartRegistrySubsystem::UpdateRequiredCount(const int32 Revision, const int32 InRequiredCount)
@@ -62,38 +67,63 @@ void UP48PlayerStartRegistrySubsystem::ReportSelectedLayout(const int32 Revision
 	UE_LOG(LogTemp, Display, TEXT("[P48PlayerStartLayout] Revision=%d Required=%d Selected=%d Registered=%d"), ActiveRevision, RequiredCount, SelectedCount, GetRegisteredCount(ActiveRevision));
 }
 
-void UP48PlayerStartRegistrySubsystem::RegisterPlayerStart(AP48PlayerStart* PlayerStart)
+void UP48PlayerStartRegistrySubsystem::ReportSelectedStarts(const int32 Revision, const TArray<FP48SelectedPlayerStart>& Starts)
 {
-	if (!IsValid(PlayerStart) || !PlayerStart->HasAuthority() || ActiveRevision <= 0)
+	if (Revision != ActiveRevision || Revision <= 0 || SelectedCount != INDEX_NONE) { return; }
+	SelectedStarts = Starts;
+	ReportSelectedLayout(Revision, SelectedStarts.Num());
+}
+
+bool UP48PlayerStartRegistrySubsystem::RegisterPlayerStart(AP48PlayerStart* PlayerStart)
+{
+	if (!IsValid(PlayerStart) || PlayerStart->GetWorld() != GetWorld() || !PlayerStart->HasAuthority() || ActiveRevision <= 0)
 	{
-		return;
+		return false;
+	}
+	if (RegisteredPlayerStarts.Contains(PlayerStart)) { return true; }
+
+	// Selector가 현재 세대 레이아웃을 보고하기 전에 BeginPlay한 Actor는 이전 PCG 결과다.
+	if (SelectedCount == INDEX_NONE)
+	{
+		UE_LOG(LogTemp, Verbose,
+			TEXT("[P48PlayerStartRegister] Rejected pre-layout start Name=%s Revision=%d"),
+			*GetNameSafe(PlayerStart), ActiveRevision);
+		return false;
+	}
+
+	if (PlayerStart->GenerationId > 0 && PlayerStart->GenerationId != ActiveRevision)
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("[P48PlayerStartRegister] Rejected stale start Name=%s ActorRevision=%d ActiveRevision=%d"),
+			*GetNameSafe(PlayerStart), PlayerStart->GenerationId, ActiveRevision);
+		return false;
+	}
+
+	if (SelectedCount <= 0 || GetRegisteredCount(ActiveRevision) >= SelectedCount)
+	{
+		return false;
 	}
 
 	PruneInvalidStarts();
-	TSet<int32> UsedSlots;
-	for (const TWeakObjectPtr<AP48PlayerStart>& ExistingStart : RegisteredPlayerStarts)
+	const int32 Slot = SelectedStarts.IndexOfByPredicate([PlayerStart](const FP48SelectedPlayerStart& Start)
 	{
-		const AP48PlayerStart* Existing = ExistingStart.Get();
-		if (Existing && Existing != PlayerStart && Existing->GenerationId == ActiveRevision && Existing->SpawnSlotIndex != INDEX_NONE)
-		{
-			UsedSlots.Add(Existing->SpawnSlotIndex);
-		}
-	}
-
-	if (PlayerStart->SpawnSlotIndex == INDEX_NONE || UsedSlots.Contains(PlayerStart->SpawnSlotIndex))
+		return Start.IslandIndex >= 0 && Start.Location.Equals(PlayerStart->GetActorLocation(), 1.0);
+	});
+	if (Slot == INDEX_NONE) { return false; }
+	if ((PlayerStart->SpawnSlotIndex != INDEX_NONE && PlayerStart->SpawnSlotIndex != Slot)
+		|| (PlayerStart->IslandIndex != INDEX_NONE && PlayerStart->IslandIndex != SelectedStarts[Slot].IslandIndex)) { return false; }
+	for (const TWeakObjectPtr<AP48PlayerStart>& WeakStart : RegisteredPlayerStarts)
 	{
-		int32 AvailableSlot = 0;
-		while (UsedSlots.Contains(AvailableSlot))
-		{
-			++AvailableSlot;
-		}
-		PlayerStart->SpawnSlotIndex = AvailableSlot;
+		if (WeakStart.IsValid() && WeakStart->SpawnSlotIndex == Slot) { return false; }
 	}
-
+	// Defaults may be filled only after matching the actual selected location.
+	PlayerStart->SpawnSlotIndex = Slot;
+	PlayerStart->IslandIndex = SelectedStarts[Slot].IslandIndex;
 	PlayerStart->GenerationId = ActiveRevision;
 	RegisteredPlayerStarts.Add(PlayerStart);
 	EvaluateReadiness();
 	UE_LOG(LogTemp, Display, TEXT("[P48PlayerStartRegister] Revision=%d Name=%s Slot=%d Island=%d Registered=%d/%d"), ActiveRevision, *GetNameSafe(PlayerStart), PlayerStart->SpawnSlotIndex, PlayerStart->IslandIndex, GetRegisteredCount(ActiveRevision), RequiredCount);
+	return true;
 }
 
 void UP48PlayerStartRegistrySubsystem::UnregisterPlayerStart(AP48PlayerStart* PlayerStart)

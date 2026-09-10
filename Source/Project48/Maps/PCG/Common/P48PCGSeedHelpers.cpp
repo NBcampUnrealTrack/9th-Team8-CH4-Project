@@ -14,6 +14,13 @@ bool P48ReadGenerationContext(FPCGContext* Context, FP48PCGGenerationContext& Ou
 		return false;
 	}
 
+	// 에디터 미리보기와 연결되지 않은 노드는 PCG Component Seed를 기본값으로 사용합니다.
+	if (Context->ExecutionSource.IsValid())
+	{
+		OutContext.Seed = Context->ExecutionSource->GetExecutionState().GetSeed();
+	}
+
+	// SharedSeed가 연결되어 있으면 네트워크 Seed 노드의 값을 우선합니다.
 	bool bFoundParamData = false;
 	for (const FPCGTaggedData& Input : Context->InputData.GetInputsByPin(P48PCGSeedNames::InputPin))
 	{
@@ -38,12 +45,6 @@ bool P48ReadGenerationContext(FPCGContext* Context, FP48PCGGenerationContext& Ou
 		break;
 	}
 
-	if (Context->ExecutionSource.IsValid())
-	{
-		// The component seed is the single editable/runtime-overridable map seed.
-		OutContext.Seed = Context->ExecutionSource->GetExecutionState().GetSeed();
-	}
-
 	UWorld* World = Context->ExecutionSource.IsValid() ? Context->ExecutionSource->GetExecutionState().GetWorld() : nullptr;
 	if (World && World->IsGameWorld())
 	{
@@ -52,16 +53,8 @@ bool P48ReadGenerationContext(FPCGContext* Context, FP48PCGGenerationContext& Ou
 			const FP48PCGGenerationContext WorldContext = Coordinator->GetGenerationContext();
 			// Runtime generation is authoritative. Never allow stale editor ParamData
 			// to replace the replicated seed on either the server or a client.
-			OutContext.Seed = WorldContext.Seed;
-			if (OutContext.GenerationId <= 0)
-			{
-				OutContext.GenerationId = WorldContext.GenerationId;
-			}
-			if (OutContext.RequiredPlayerCount <= 0)
-			{
-				OutContext.RequiredPlayerCount = WorldContext.RequiredPlayerCount;
-			}
-			return WorldContext.IsValid() || bFoundParamData;
+			OutContext = WorldContext;
+			return WorldContext.IsValid();
 		}
 	}
 	return Context->ExecutionSource.IsValid() || bFoundParamData;
@@ -69,9 +62,8 @@ bool P48ReadGenerationContext(FPCGContext* Context, FP48PCGGenerationContext& Ou
 
 int32 P48ReadNetworkSeed(FPCGContext* Context)
 {
-	if (Context && Context->ExecutionSource.IsValid())
-	{
-		return Context->ExecutionSource->GetExecutionState().GetSeed();
-	}
-	return Context ? Context->GetSeed() : 0;
+	FP48PCGGenerationContext GenerationContext;
+	return P48ReadGenerationContext(Context, GenerationContext)
+		? GenerationContext.Seed
+		: (Context ? Context->GetSeed() : 0);
 }

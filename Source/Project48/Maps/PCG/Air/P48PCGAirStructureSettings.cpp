@@ -124,6 +124,89 @@ namespace P48AirStructure
 		return &Entries.Last();
 	}
 
+	const FPreparedEntry* SelectWeightedDiverse(
+		const TArray<FPreparedEntry>& Entries,
+		const float TotalWeight,
+		const TArray<FPlacedEntry>& Placed,
+		FRandomStream& Random)
+	{
+		if (Entries.Num() < 2 || Placed.IsEmpty())
+		{
+			return SelectWeighted(Entries, TotalWeight, Random);
+		}
+
+		float StaticMeshWeight = 0.0f;
+		float ActorWeight = 0.0f;
+		for (const FPreparedEntry& Entry : Entries)
+		{
+			if (Entry.Type == ESpawnType::StaticMesh)
+			{
+				StaticMeshWeight += Entry.Weight;
+			}
+			else
+			{
+				ActorWeight += Entry.Weight;
+			}
+		}
+
+		ESpawnType SelectedType = ESpawnType::StaticMesh;
+		if (StaticMeshWeight <= 0.0f)
+		{
+			SelectedType = ESpawnType::Actor;
+		}
+		else if (ActorWeight > 0.0f && Random.FRandRange(0.0f, StaticMeshWeight + ActorWeight) > StaticMeshWeight)
+		{
+			SelectedType = ESpawnType::Actor;
+		}
+
+		int32 MinimumUsage = MAX_int32;
+		TArray<const FPreparedEntry*, TInlineAllocator<32>> Candidates;
+		for (const FPreparedEntry& Entry : Entries)
+		{
+			if (Entry.Type != SelectedType)
+			{
+				continue;
+			}
+
+			int32 Usage = 0;
+			for (const FPlacedEntry& Item : Placed)
+			{
+				Usage += Item.Entry == &Entry ? 1 : 0;
+			}
+			if (Usage < MinimumUsage)
+			{
+				MinimumUsage = Usage;
+				Candidates.Reset();
+			}
+			if (Usage == MinimumUsage)
+			{
+				Candidates.Add(&Entry);
+			}
+		}
+
+		float CandidateWeight = 0.0f;
+		for (const FPreparedEntry* Candidate : Candidates)
+		{
+			CandidateWeight += Candidate->Weight;
+		}
+		if (Candidates.IsEmpty() || CandidateWeight <= 0.0f)
+		{
+			return SelectWeighted(Entries, TotalWeight, Random);
+		}
+
+		const float Selection = Random.FRandRange(0.0f, CandidateWeight);
+		float Accumulated = 0.0f;
+		for (const FPreparedEntry* Candidate : Candidates)
+		{
+			Accumulated += Candidate->Weight;
+			if (Selection <= Accumulated)
+			{
+				return Candidate;
+			}
+		}
+		return Candidates.Last();
+	}
+
 	bool Overlaps(const FPreparedEntry& Candidate, const FVector& CandidateLocation, const TArray<FPlacedEntry>& Placed, const float GlobalMinGap)
 	{
 		for (const FPlacedEntry& Existing : Placed)
@@ -406,6 +489,24 @@ bool FP48PCGAirStructureElement::ExecuteInternal(FPCGContext* Context) const
 
 	const FP48AirStructureGenerationSettings& Rules = Settings->GenerationSettings;
 	const int32 TargetCount = FMath::Max(1, Rules.TargetCount);
+	if (Rules.PlacementMode == EP48AirPlacementMode::SkyIsland && TargetCount > 1)
+	{
+		const float MaximumDistance = FMath::Min(FMath::Max(1.0f, Rules.MaxIslandCenterDistance), Rules.ConnectionRules.MaxBridgeLength);
+		for (const P48AirStructure::FPreparedEntry& Entry : Entries)
+		{
+			float MinimumRequiredDistance = TNumericLimits<float>::Max();
+			for (const P48AirStructure::FPreparedEntry& Other : Entries)
+			{
+				MinimumRequiredDistance = FMath::Min(MinimumRequiredDistance,
+					Entry.Radius + Other.Radius + FMath::Max(Entry.MinGap, Other.MinGap) + FMath::Max(0.0f, Rules.GlobalMinGap));
+			}
+			if (MinimumRequiredDistance > MaximumDistance)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[P48AirStructure] %s cannot fit beside any configured entry: required center distance >= %.1f, allowed <= %.1f. Adjust mesh Scale, gaps or MaxIslandCenterDistance; changing Seed alone cannot fix this."),
+					Entry.Mesh ? *GetNameSafe(Entry.Mesh) : *GetNameSafe(Entry.ActorClass.Get()), MinimumRequiredDistance, MaximumDistance);
+			}
+		}
+	}
 	const FVector2D HalfMapSize = Rules.MapSize.GetAbs() * 0.5f;
 	const float MinHeight = FMath::Min(Rules.HeightRange.X, Rules.HeightRange.Y);
 	const float MaxHeight = FMath::Max(Rules.HeightRange.X, Rules.HeightRange.Y);
@@ -423,7 +524,11 @@ bool FP48PCGAirStructureElement::ExecuteInternal(FPCGContext* Context) const
 			bool bPlaced = false;
 			for (int32 PlacementAttempt = 0; PlacementAttempt < FMath::Max(1, Rules.MaxPlacementAttemptsPerStructure); ++PlacementAttempt)
 			{
-				const P48AirStructure::FPreparedEntry* Entry = P48AirStructure::SelectWeighted(Entries, TotalWeight, Random);
+				const bool bTryDiverseEntry = Rules.bDistributeStructureTypesBeforeRepeating
+					&& PlacementAttempt < FMath::Max(4, Entries.Num() * 2);
+				const P48AirStructure::FPreparedEntry* Entry = bTryDiverseEntry
+					? P48AirStructure::SelectWeightedDiverse(Entries, TotalWeight, Layout, Random)
+					: P48AirStructure::SelectWeighted(Entries, TotalWeight, Random);
 				if (!Entry)
 				{
 					continue;

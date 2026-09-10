@@ -1,8 +1,10 @@
 #include "P48PCGDeathVolumeSettings.h"
 
+#include "../Common/P48PCGSeedHelpers.h"
 #include "Data/PCGPointData.h"
 #include "Data/PCGSpatialData.h"
 #include "Engine/World.h"
+#include "Helpers/PCGHelpers.h"
 #include "PCGContext.h"
 
 #define LOCTEXT_NAMESPACE "P48PCGDeathVolumeSettings"
@@ -30,6 +32,7 @@ TArray<FPCGPinProperties> UP48PCGDeathVolumeSettings::InputPinProperties() const
 {
 	TArray<FPCGPinProperties> Pins;
 	Pins.Emplace_GetRef(PCGPinConstants::DefaultInputLabel, EPCGDataType::Spatial).SetRequiredPin();
+	Pins.Emplace(P48PCGSeedNames::InputPin, EPCGDataType::Param);
 	return Pins;
 }
 
@@ -109,7 +112,9 @@ bool FP48PCGDeathVolumeElement::ExecuteInternal(FPCGContext* Context) const
 	Point.BoundsMin = FVector(-P48DeathVolume::BaseBoxExtent);
 	Point.BoundsMax = FVector(P48DeathVolume::BaseBoxExtent);
 	Point.Steepness = 1.0f;
-	Point.Seed = HashCombine(GetTypeHash(VolumeCenter), GetTypeHash(VolumeSize));
+	Point.Seed = PCGHelpers::ComputeSeed(
+		P48ReadNetworkSeed(Context),
+		HashCombine(GetTypeHash(VolumeCenter), GetTypeHash(VolumeSize)));
 
 	UPCGBasePointData* Output = FPCGContext::NewPointData_AnyThread(Context);
 	Output->SetNumPoints(1, false);
