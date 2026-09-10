@@ -18,6 +18,7 @@ public:
 		const UObject* WorldContextObject,
 		FGameplayTag Channel);
 
+	/** Local GameInstance dispatch only. True does not acknowledge a listener or retain the payload. */
 	template <typename TPayload>
 	static bool Broadcast(
 		const UObject* WorldContextObject,

@@ -5,19 +5,17 @@
 #include "Kismet/GameplayStatics.h"
 #include "../GameplayMessageLibrary/Core/P48GameplayMessageLibrary.h"
 #include "../GameplayMessageLibrary/Core/P48GameplayMessageTags.h"
-#include "../GameplayMessageLibrary/Map/P48MapMessagePayloads.h"
 #include "../GameplayMessageLibrary/Match/P48MatchMessagePayloads.h"
 #include "TimerManager.h"
 
 #include "P48GameStateBase.h"
 #include "../Character/P48PlayerState.h"
-#include "../Maps/PCG/Common/P48PCGSeedWorldSubsystem.h"
 #include "../Maps/PCG/Common/P48PCGSeedState.h"
+#include "../Maps/PCG/Common/P48PCGSeedWorldSubsystem.h"
 #include "EngineUtils.h"
 
 
 #include "GameFramework/PlayerController.h"
-
 
 namespace P48MapReadiness
 {
@@ -192,6 +190,8 @@ void AP48GameModeBase::Logout(AController* Exit)
 
     UE_LOG(LogTemp,Warning,TEXT("Remaining Match Participants: %d"),RemainingParticipantCount);
 
+	// 잠긴 참가자가 나간 경우에만 PlayerStart 요구 수를 줄인다.
+	// 늦게 접속한 관전자는 참가자 수와 PlayerStart 레이아웃을 늘리지 않는다.
 	if (bMapGenerationRequested && bWasMatchParticipant)
 	{
 		ConfirmedPlayerCount = RemainingParticipantCount;
@@ -271,19 +271,20 @@ void AP48GameModeBase::CheckStartCondition()
 
 	if (!bMapGenerationRequested)
 	{
+		const UP48PCGSeedWorldSubsystem* Coordinator = GetWorld()->GetSubsystem<UP48PCGSeedWorldSubsystem>();
+		if (P48MapReadiness::RequiresNetworkSeed(GetWorld()) && (!Coordinator || !Coordinator->CanReceivePlayerCount())) { return; }
 		ConfirmMatchParticipants();
 
-		// 참가 명단을 먼저 잠근다. PCG 맵인 경우에만 Maps에 실제 생성을 요청한다.
+		// 최초 확정 인원만 PlayerStart 정책에 전달한다. 맵 Seed와 생성 시작은 Maps가 관리한다.
 		bMapGenerationRequested = true;
-		if (P48MapReadiness::RequiresNetworkSeed(GetWorld()))
+		if (!UP48GameplayMessageLibrary::Broadcast(
+			this,
+			P48GameplayTags::Match::PlayerCountChanged,
+			FP48MatchPlayerCountMessage(ConfirmedPlayerCount)))
 		{
-			const FP48MapGenerationRequestMessage Message(ConfirmedPlayerCount, 0);
-			if (!UP48GameplayMessageLibrary::Broadcast(this, P48GameplayTags::Map::GenerationRequested, Message))
-			{
-				bMapGenerationRequested = false;
-				UE_LOG(LogTemp, Error, TEXT("[Server] Map generation Broadcast failed."));
-				return;
-			}
+			bMapGenerationRequested = false;
+			UE_LOG(LogTemp, Error, TEXT("[Server] Confirmed player-count Broadcast failed."));
+			return;
 		}
 		if (P48GameState->MatchPhase != EP48MatchPhase::Waiting) { return; }
 	}
@@ -479,13 +480,22 @@ void AP48GameModeBase::PrepareNextRound()
 
 	if (P48MapReadiness::RequiresNetworkSeed(GetWorld()))
 	{
-		const FP48MapGenerationRequestMessage Message(ParticipantCount, 0);
-		if (ParticipantCount <= 0 || !UP48GameplayMessageLibrary::Broadcast(this, P48GameplayTags::Map::GenerationRequested, Message))
+		UP48PCGSeedWorldSubsystem* Coordinator = GetWorld()->GetSubsystem<UP48PCGSeedWorldSubsystem>();
+		if (ParticipantCount <= 0
+			|| !Coordinator
+			|| !Coordinator->CanReceivePlayerCount()
+			|| !UP48GameplayMessageLibrary::Broadcast(
+				this,
+				P48GameplayTags::Match::PlayerCountChanged,
+				FP48MatchPlayerCountMessage(ParticipantCount)))
 		{
 			bWaitingForRoundMap = false;
-			UE_LOG(LogTemp, Error, TEXT("[RoundMap] Failed to request map generation. Participants=%d"), ParticipantCount);
+			UE_LOG(LogTemp, Error, TEXT("[RoundMap] Failed to deliver player count. Participants=%d"), ParticipantCount);
 			return;
 		}
+
+		// 참가 인원 전달과 맵 생성 요청은 분리한다. 새 Seed는 Maps가 생성한다.
+		Coordinator->RequestGeneration();
 	}
 
 	// 완료 알림 외에도 퇴장으로 준비 조건이 풀리는 경우 재확인한다.

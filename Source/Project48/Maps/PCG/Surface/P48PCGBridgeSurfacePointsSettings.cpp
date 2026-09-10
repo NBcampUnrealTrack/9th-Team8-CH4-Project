@@ -1,9 +1,11 @@
 #include "P48PCGBridgeSurfacePointsSettings.h"
 
 #include "P48IslandSurfaceSampler.h"
+#include "../Common/P48PCGSeedHelpers.h"
 #include "../Common/P48PCGSpawnAttributeNames.h"
 #include "Data/PCGPointData.h"
 #include "Engine/StaticMesh.h"
+#include "Helpers/PCGHelpers.h"
 #include "Metadata/PCGMetadata.h"
 #include "Metadata/PCGMetadataAttribute.h"
 #include "Engine/World.h"
@@ -28,6 +30,7 @@ TArray<FPCGPinProperties> UP48PCGBridgeSurfacePointsSettings::InputPinProperties
 {
 	TArray<FPCGPinProperties> Pins;
 	Pins.Emplace_GetRef(PCGPinConstants::DefaultInputLabel, EPCGDataType::Point).SetRequiredPin();
+	Pins.Emplace(P48PCGSeedNames::InputPin, EPCGDataType::Param);
 	return Pins;
 }
 
@@ -78,6 +81,7 @@ bool FP48PCGBridgeSurfacePointsElement::ExecuteInternal(FPCGContext* Context) co
 		}
 	}
 
+	const int32 NetworkSeed = P48ReadNetworkSeed(Context);
 	const int32 Directions = FMath::Clamp(Settings->DirectionCount, 4, 64);
 	const int32 Steps = FMath::Clamp(Settings->RadialSteps, 4, 64);
 	const int32 RefinementSteps = FMath::Clamp(Settings->EdgeRefinementSteps, 3, 12);
@@ -182,7 +186,9 @@ bool FP48PCGBridgeSurfacePointsElement::ExecuteInternal(FPCGContext* Context) co
 						FPCGPoint& Point = Points.Emplace_GetRef();
 						Point.Transform = FTransform(FRotator(0.0, FMath::RadiansToDegrees(Angle), 0.0), Surface.ImpactPoint);
 						Point.Density = 1.0f;
-						Point.Seed = Islands->GetSeed(Island) ^ DirectionIndex;
+						Point.Seed = PCGHelpers::ComputeSeed(
+							NetworkSeed,
+							HashCombine(Islands->GetSeed(Island), DirectionIndex));
 						Point.BoundsMin = FVector(-FMath::Max(1.0f, Settings->PointExtent));
 						Point.BoundsMax = -Point.BoundsMin;
 						Point.MetadataEntry = Metadata->AddEntry();

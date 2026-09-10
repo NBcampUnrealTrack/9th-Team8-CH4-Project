@@ -6,7 +6,7 @@
 #include "../../Components/Network/P48BridgeNetworkSyncComponent.h"
 #include "../../Components/Physics/P48BridgePhysicsComponent.h"
 #include "../../Components/Rope/P48BridgeRopePathComponent.h"
-#include "../../PCG/Common/P48PCGSeedState.h"
+#include "../../PCG/Common/P48PCGSeedWorldSubsystem.h"
 #include "Components/ActorComponent.h"
 #include "Components/BoxComponent.h"
 #include "Components/SceneComponent.h"
@@ -15,7 +15,6 @@
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
-#include "EngineUtils.h"
 #include "Net/UnrealNetwork.h"
 
 AP48SwingBridge::AP48SwingBridge()
@@ -368,15 +367,8 @@ void AP48SwingBridge::PublishNetworkState()
 int32 AP48SwingBridge::ResolveGenerationId() const
 {
 	const UWorld* World = GetWorld();
-	if (!World)
-	{
-		return 0;
-	}
-	for (TActorIterator<AP48PCGSeedState> It(World); It; ++It)
-	{
-		return It->State.Revision;
-	}
-	return 0;
+	const UP48PCGSeedWorldSubsystem* Coordinator = World ? World->GetSubsystem<UP48PCGSeedWorldSubsystem>() : nullptr;
+	return Coordinator ? Coordinator->GetGenerationContext().GenerationId : 0;
 }
 
 void AP48SwingBridge::ApplyRopePaths(const FP48BridgeRopePathResult& RopeResult, const bool bUpdateCollision)
