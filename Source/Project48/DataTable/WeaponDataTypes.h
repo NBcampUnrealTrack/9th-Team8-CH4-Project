@@ -51,6 +51,20 @@ public:
 		)
 	float Weight = 1.0f;
 	
+	UPROPERTY(
+		EditAnywhere,
+		BlueprintReadOnly,
+		Category = "Weapon|Transform"
+		)
+	FVector RelativeLocation = FVector::ZeroVector;
+	
+	UPROPERTY(
+		EditAnywhere,
+		BlueprintReadOnly,
+		Category = "Weapon|Transform"
+		)
+	FRotator RelativeRotator = FRotator::ZeroRotator;
+	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon|Audio")
 	TSoftObjectPtr<USoundBase> SwingSound;
 	
