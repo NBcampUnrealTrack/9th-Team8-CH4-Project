@@ -28,6 +28,10 @@
 			"Enabled": true
 		},
 		{
+			"Name": "GameplayMessageRouter",
+			"Enabled": true
+		},
+		{
 			"Name": "OnlineSubsystemNull",
 			"Enabled": true
 		},

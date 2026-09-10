@@ -39,6 +39,7 @@ protected:
 	virtual bool ShouldAdvanceRound() const override;
 	virtual bool ShouldCancelCountdown(int32 RemainingParticipants) const override;
 	virtual void ClearMatchTimers() override;
+	virtual bool IsRoundSpawnParticipant(const AP48PlayerState* Player) const override;
 
 	// 현재 라운드에 참가할 자격이 있는 플레이어인지 확인
 	bool IsCurrentRoundParticipant(const AP48PlayerState* Player) const;
