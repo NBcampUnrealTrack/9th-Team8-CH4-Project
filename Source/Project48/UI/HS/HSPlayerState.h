@@ -12,6 +12,9 @@ class PROJECT48_API AHSPlayerState : public AP48PlayerState
 public:
 	AHSPlayerState();
 
+	UPROPERTY(Replicated, BlueprintReadOnly)
+	FString UserID;
+	
 	UPROPERTY(ReplicatedUsing = OnRep_Nickname)
 	FString Nickname;
 
