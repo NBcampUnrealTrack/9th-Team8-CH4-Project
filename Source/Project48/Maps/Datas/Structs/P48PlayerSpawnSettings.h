@@ -9,11 +9,11 @@ struct PROJECT48_API FP48PlayerSpawnSettings
 {
 	GENERATED_BODY()
 
-	/** 플레이어 수를 아직 읽을 수 없을 때 사용할 최소 생성 개수입니다. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|PlayerSpawn", meta = (ClampMin = "1"))
+	/** 에디터 미리보기에서 플레이어 수가 없을 때 사용할 생성 개수입니다. 런타임은 확정 인원을 기다립니다. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|PlayerSpawn", meta = (ClampMin = "1", UIMin = "1"))
 	int32 SpawnCount = 1;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|PlayerSpawn", meta = (ClampMin = "0.0", Units = "cm"))
-	float SpawnHeight = 1000.0f;
+	float SpawnHeight = 150.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|PlayerSpawn", meta = (ClampMin = "0.0", Units = "cm"))
 	float MinSpawnDistance = 3000.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|PlayerSpawn")

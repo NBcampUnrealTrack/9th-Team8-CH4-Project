@@ -1,5 +1,6 @@
 #include "P48PCGBridgeNetworkSettings.h"
 #include "../Common/P48PCGSeedHelpers.h"
+#include "../../Utilities/P48BridgeConnectionPolicy.h"
 
 #include "../Common/P48PCGSpawnAttributeNames.h"
 #include "Data/PCGPointData.h"
@@ -98,20 +99,6 @@ namespace P48BridgeNetwork
 		TArray<int32> Parent;
 		TArray<uint8> Rank;
 	};
-
-	bool IsValidEdge(const FAnchor& A, const FAnchor& B, const FP48BridgeConnectionRules& Rules, float& OutLength)
-	{
-		const FVector Difference = B.Location - A.Location;
-		const float HorizontalDistance = FVector2D(Difference.X, Difference.Y).Length();
-		const float HeightDifference = FMath::Abs(Difference.Z);
-		OutLength = Difference.Length();
-		if (HorizontalDistance < Rules.MinHorizontalDistance || HeightDifference > Rules.MaxHeightDifference || OutLength > Rules.MaxBridgeLength)
-		{
-			return false;
-		}
-
-		return FMath::RadiansToDegrees(FMath::Atan2(HeightDifference, HorizontalDistance)) <= Rules.MaxSlopeAngle;
-	}
 
 	bool FacesBridge(const FSurfaceCandidate& Candidate, const FVector& OtherLocation, const FP48BridgeConnectionRules& Rules)
 	{
@@ -346,7 +333,7 @@ bool FP48PCGBridgeNetworkElement::ExecuteInternal(FPCGContext* Context) const
 							StartAnchor.Location = StartCandidate.Location;
 							EndAnchor.Location = EndCandidate.Location;
 							float CandidateLength = 0.0f;
-							if (P48BridgeNetwork::IsValidEdge(StartAnchor, EndAnchor, Settings->GenerationSettings.ConnectionRules, CandidateLength) && CandidateLength < Best.Length)
+							if (P48BridgeConnectionPolicy::IsGeometryValid(StartAnchor.Location, EndAnchor.Location, Settings->GenerationSettings.ConnectionRules, CandidateLength) && CandidateLength < Best.Length)
 							{
 								Best.Length = CandidateLength;
 								Best.Start = StartCandidate.Location;
@@ -358,7 +345,7 @@ bool FP48PCGBridgeNetworkElement::ExecuteInternal(FPCGContext* Context) const
 					continue;
 				}
 				float Length = 0.0f;
-				if (P48BridgeNetwork::IsValidEdge(Anchors[A], Anchors[B], Settings->GenerationSettings.ConnectionRules, Length))
+				if (P48BridgeConnectionPolicy::IsGeometryValid(Anchors[A].Location, Anchors[B].Location, Settings->GenerationSettings.ConnectionRules, Length))
 				{
 					P48BridgeNetwork::FEdge& Edge = ValidEdges.Emplace_GetRef();
 					Edge.A = A;
@@ -425,6 +412,21 @@ bool FP48PCGBridgeNetworkElement::ExecuteInternal(FPCGContext* Context) const
 			const float BridgeLength = Difference.Length();
 			if (BridgeLength <= UE_KINDA_SMALL_NUMBER)
 			{
+				continue;
+			}
+
+			const bool bDuplicate = BridgePoints.ContainsByPredicate([&](const P48BridgeNetwork::FBridgePoint& Existing)
+			{
+				return P48BridgeConnectionPolicy::AreSameUndirectedEndpoints(
+					Start,
+					End,
+					Existing.Start,
+					Existing.End,
+					Settings->GenerationSettings.DuplicateEndpointTolerance);
+			});
+			if (bDuplicate)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[P48Bridge] Duplicate connection skipped: Start=%s End=%s"), *Start.ToCompactString(), *End.ToCompactString());
 				continue;
 			}
 

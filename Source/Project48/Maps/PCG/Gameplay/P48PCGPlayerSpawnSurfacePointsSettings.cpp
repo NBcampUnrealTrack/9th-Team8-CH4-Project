@@ -1,10 +1,12 @@
 #include "P48PCGPlayerSpawnSurfacePointsSettings.h"
 
+#include "../Common/P48PCGSeedHelpers.h"
 #include "../Common/P48PCGSpawnAttributeNames.h"
 #include "../Surface/P48IslandSurfaceSampler.h"
 #include "Data/PCGPointData.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
+#include "Helpers/PCGHelpers.h"
 #include "Metadata/PCGMetadata.h"
 #include "Metadata/PCGMetadataAttribute.h"
 #include "PCGContext.h"
@@ -50,6 +52,7 @@ TArray<FPCGPinProperties> UP48PCGPlayerSpawnSurfacePointsSettings::InputPinPrope
 {
 	TArray<FPCGPinProperties> Pins;
 	Pins.Emplace_GetRef(PCGPinConstants::DefaultInputLabel, EPCGDataType::Point).SetRequiredPin();
+	Pins.Emplace(P48PCGSeedNames::InputPin, EPCGDataType::Param);
 	return Pins;
 }
 
@@ -96,6 +99,7 @@ bool FP48PCGPlayerSpawnSurfaceElement::ExecuteInternal(FPCGContext* Context) con
 		}
 	}
 
+	const int32 NetworkSeed = P48ReadNetworkSeed(Context);
 	const float Spacing = FMath::Max(100.0f, Settings->CandidateSpacing);
 	const float SafeDistance = FMath::Max(0.0f, Settings->EdgeSafeDistance);
 	const double MinNormalZ = FMath::Cos(FMath::DegreesToRadians(FMath::Clamp(Settings->MaxSurfaceSlope, 0.0f, 80.0f)));
@@ -159,7 +163,7 @@ bool FP48PCGPlayerSpawnSurfaceElement::ExecuteInternal(FPCGContext* Context) con
 						FMath::Lerp(Bounds.Min.Y, Bounds.Max.Y, (Y + 0.5) / SamplesY),
 						Bounds.GetCenter().Z);
 					FHitResult SurfaceHit;
-					if (!FP48IslandSurfaceSampler::TraceTop(World, Mesh, IslandTransform, Bounds, SampleLocation, SurfaceHit) || SurfaceHit.ImpactNormal.Z < MinNormalZ)
+					if (!FP48IslandSurfaceSampler::TraceTop(World, Mesh, IslandTransform, Bounds, SampleLocation, SurfaceHit, nullptr, true) || SurfaceHit.ImpactNormal.Z < MinNormalZ)
 					{
 						continue;
 					}
@@ -170,7 +174,7 @@ bool FP48PCGPlayerSpawnSurfaceElement::ExecuteInternal(FPCGContext* Context) con
 						const double Angle = 2.0 * PI * DirectionIndex / P48PlayerSpawnSurface::SupportDirectionCount;
 						const FVector Offset(FMath::Cos(Angle) * SafeDistance, FMath::Sin(Angle) * SafeDistance, 0.0f);
 						FHitResult SupportHit;
-						bSafeEdge = FP48IslandSurfaceSampler::TraceTop(World, Mesh, IslandTransform, Bounds, SurfaceHit.ImpactPoint + Offset, SupportHit) &&
+						bSafeEdge = FP48IslandSurfaceSampler::TraceTop(World, Mesh, IslandTransform, Bounds, SurfaceHit.ImpactPoint + Offset, SupportHit, nullptr, true) &&
 							SupportHit.ImpactNormal.Z >= MinNormalZ &&
 							FMath::Abs(SupportHit.ImpactPoint.Z - SurfaceHit.ImpactPoint.Z) <= FMath::Max(100.0f, SafeDistance * 0.25f);
 					}
@@ -183,7 +187,9 @@ bool FP48PCGPlayerSpawnSurfaceElement::ExecuteInternal(FPCGContext* Context) con
 					FPCGPoint& Point = Points.Emplace_GetRef();
 					Point.Transform = FTransform(ToIslandCenter.Rotation(), SurfaceHit.ImpactPoint);
 					Point.Density = 1.0f;
-					Point.Seed = Islands->GetSeed(IslandPointIndex) ^ HashCombine(X, Y);
+					Point.Seed = PCGHelpers::ComputeSeed(
+						NetworkSeed,
+						HashCombine(Islands->GetSeed(IslandPointIndex), HashCombine(X, Y)));
 					Point.BoundsMin = FVector(-25.0f);
 					Point.BoundsMax = FVector(25.0f);
 					Point.MetadataEntry = Metadata->AddEntry();
