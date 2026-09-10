@@ -46,6 +46,11 @@ bool AP48SurvivalGameMode::IsCurrentRoundParticipant(const AP48PlayerState* Play
 	return IsValid(GS) && IsValid(MatchFlowRule) && MatchFlowRule->IsRoundParticipant(*GS, Player);
 }
 
+bool AP48SurvivalGameMode::IsRoundSpawnParticipant(const AP48PlayerState* Player) const
+{
+	return IsCurrentRoundParticipant(Player);
+}
+
 bool AP48SurvivalGameMode::IsTiebreakerParticipant(const AP48PlayerState* Player) const
 {
 	return IsValid(MatchFlowRule) && MatchFlowRule->IsTiebreakerParticipant(Player);
