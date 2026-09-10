@@ -22,6 +22,7 @@ public:
 	bool IsMatchParticipant() const { return bIsMatchParticipant; }
 	int32 GetRoundWinCount() const { return RoundWinCount; }
 	int32 GetStunCount() const {return StunCount; }
+	bool HasWeapon() const {return bHasWeapon; }
 
 protected:
 	// 플레이어가 현재 Match 시작 준비를 완료했는지
@@ -44,6 +45,10 @@ protected:
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Stun")
 	int32 StunCount = 0;
 	
+	// Weapon
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Weapon")
+	bool bHasWeapon = false;
+	
 public:
 	void SetReady(bool bNewReady);
 	void SetAlive(bool bNewAlive);
@@ -58,4 +63,8 @@ public:
 	
 	// 사망 처리 함수 (스턴 누적, 낙사 등)
 	void OnDeath();
+	
+	// 무기 장착 상태 갱신 함수
+	void SetHasWeapon(bool NewHasWeapon);
+	void ResetHasWeapon();
 };
