@@ -16,6 +16,7 @@ class UAbilitySystemComponent;
 class UGameplayEffect;
 class UP48GroggyAttributeSet;
 class UP48PlayerNameWidgetComponent;
+class AP48WeaponBase;
 struct FInputActionValue;
 
 UCLASS()
@@ -25,10 +26,11 @@ class PROJECT48_API AP48PlayerCharacter : public ACharacter, public IAbilitySyst
 
 public:
 	AP48PlayerCharacter();
-
+	
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 protected:
 	virtual void BeginPlay() override;
-
+	
 	//GAS
 	virtual void PossessedBy(AController* NewController) override;
 	virtual void OnRep_PlayerState() override;
@@ -88,14 +90,18 @@ protected:
 	
 	void OnStunTagChanged(const struct FGameplayTag CallbackTag, int32 NewCount);
 	
-	//Death
-	
-	
 	//UI
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="UI|Nickname")
 	TObjectPtr<UP48PlayerNameWidgetComponent> NicknameWidgetComponent;
 	
 	void UpdateNickname();
+	
+	//Weapon
+	UPROPERTY(ReplicatedUsing = OnRep_Weapon)
+	TObjectPtr<AP48WeaponBase> Weapon;
+	
+	UFUNCTION()
+	void OnRep_Weapon();
 	
 public:	
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
@@ -109,7 +115,6 @@ public:
 	
 	UFUNCTION(BlueprintCallable, Category="Attack|Attack")
 	void StopPunchAttack();
-
 	
 private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components|Camera", meta=(AllowPrivateAccess="true"))
@@ -132,6 +137,9 @@ private:
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Input", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UInputAction> IA_Attack;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Input", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UInputAction> IA_PickUp;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Sound", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<USoundBase> JumpSound;
@@ -180,6 +188,9 @@ private:
 	UFUNCTION(Server, Reliable, WithValidation)
 	void Server_ApplyHit(AActor* HitActor, const FVector& HitLoc, const FVector& HitDir);
 	
+	UFUNCTION(Server, Reliable)
+	void Server_EquipWeapon(AP48WeaponBase* NewWeapon);
+	
 	//MulticastRPC
 	UFUNCTION(NetMulticast, Unreliable)
 	void Multicast_OnHit(const FVector& HitLocation, const FVector& Impulse);
@@ -198,6 +209,9 @@ private:
 	void Attack();
 	
 	void AttackHandle();
+	
+	//weapon
+	void EquipWeaponHandle();
 public:
 	virtual void Jump() override;
 	virtual void OnJumped_Implementation() override;
