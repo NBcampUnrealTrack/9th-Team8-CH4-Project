@@ -34,6 +34,10 @@ public:
 
 	/** 로컬 PCG가 현재 세대 생성을 마쳤음을 서버에 알립니다. */
 	void ReportMapGenerationComplete(int32 GenerationId);
+	
+	//ClientRPC
+	UFUNCTION(Client, Reliable)
+	void Client_SetPlayInputBlocked(bool bBlocked);
 
 protected:
 	UFUNCTION(Server, Reliable)
