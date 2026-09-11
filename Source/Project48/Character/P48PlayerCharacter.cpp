@@ -109,6 +109,16 @@ AP48PlayerCharacter::AP48PlayerCharacter()
 	NicknameWidgetComponent->SetUsingAbsoluteRotation(true);
 }
 
+void AP48PlayerCharacter::Destroyed()
+{
+	if (HasAuthority() && Weapon)
+	{
+		Weapon->Destroy();
+		Weapon = nullptr;
+	}
+	Super::Destroyed();
+}
+
 void AP48PlayerCharacter::BeginPlay()
 {
 	Super::BeginPlay();
@@ -287,6 +297,11 @@ void AP48PlayerCharacter::Look(const FInputActionValue& Value)
 
 void AP48PlayerCharacter::Run()
 {
+	if (bInputBlocked)
+	{
+		return;
+	}
+	
 	if (!AbilitySystemComponent || !RunEffectClass)
 	{
 		return;	
@@ -344,6 +359,11 @@ void AP48PlayerCharacter::StopRun()
 
 void AP48PlayerCharacter::Jump()
 {
+	if (bInputBlocked)
+	{
+		return;
+	}
+	
 	Super::Jump();
 }
 
@@ -370,6 +390,11 @@ void AP48PlayerCharacter::Attack()
 
 void AP48PlayerCharacter::AttackHandle()
 {
+	if (bInputBlocked)
+	{
+		return;
+	}
+	
 	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
 	if (AnimInstance)
 	{
@@ -715,6 +740,11 @@ void AP48PlayerCharacter::OnStunTagChanged(const struct FGameplayTag CallbackTag
 
 void AP48PlayerCharacter::EquipWeaponHandle()
 {
+	if (bInputBlocked)
+	{
+		return;
+	}
+	
 	if (!IsLocallyControlled())
 	{
 		return;
@@ -831,4 +861,64 @@ void AP48PlayerCharacter::OnRep_Weapon()
 	{
 		//TODO: 나중에 무기 버릴 때 
 	}
+}
+
+void AP48PlayerCharacter::SetInputBlocked(bool bBlocked)
+{
+	if (bBlocked)
+	{
+		StopRun();
+	}
+}
+
+void AP48PlayerCharacter::Death()
+{
+	AP48PlayerState* PS = GetPlayerState<AP48PlayerState>();
+	
+	if (!PS)
+	{
+		return;
+	}
+	
+	Multicast_DeathRagDoll();
+	
+	PS->OnDeath();
+}
+
+void AP48PlayerCharacter::Multicast_DeathRagDoll_Implementation()
+{
+	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+	{
+		MoveComp->StopMovementImmediately();
+		MoveComp->DisableMovement();
+	}
+	
+	if (UCapsuleComponent* CapsuleComp = GetCapsuleComponent())
+	{
+		CapsuleComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		CapsuleComp->SetCollisionResponseToAllChannels(ECR_Ignore);
+	}
+	
+	if (USkeletalMeshComponent* MeshComp = GetMesh())
+	{
+		if (UAnimInstance* AnimInstance = MeshComp->GetAnimInstance())
+		{
+			AnimInstance->StopAllMontages(0.0f);
+		}
+		
+		MeshComp->SetCollisionProfileName(TEXT("Ragdoll"));
+		MeshComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+		MeshComp->SetAllBodiesSimulatePhysics(true);
+		MeshComp->SetSimulatePhysics(true);
+		MeshComp->WakeAllRigidBodies();
+		MeshComp->bBlendPhysics = false;
+		MeshComp->SetPhysicsBlendWeight(1.0f);
+	}
+	
+	if (NicknameWidgetComponent)
+	{
+		NicknameWidgetComponent->SetVisibility(false);
+	}
+	
+	UE_LOG(LogTemp, Warning, TEXT("[%s] Multi_DeathRagDoll: 순수 래그돌 연출 완료 "), *GetName());
 }
