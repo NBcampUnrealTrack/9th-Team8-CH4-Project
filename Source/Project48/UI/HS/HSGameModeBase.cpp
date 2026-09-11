@@ -1,5 +1,6 @@
 #include "HSGameModeBase.h"
 #include "HSPlayerState.h"
+#include "GameFramework/GameStateBase.h"
 #include "Kismet/GameplayStatics.h"
 #include "Project48/Database/P48NicknameDatabaseSubsystem.h"
 #include "Project48/Game/P48GameInstance.h"
@@ -12,14 +13,20 @@ void AHSGameModeBase::PreLogin(
 {
 	Super::PreLogin(Options, Address, UniqueId, ErrorMessage);
 	
+	if (!ErrorMessage.IsEmpty())
+	{
+		return;
+	}
+	
 	// 접속 옵션에서 UserID 추출
-	const FString UserID = UGameplayStatics::ParseOption(Options, TEXT("UserID"));
+	const FString UserID = UGameplayStatics::ParseOption(Options, TEXT("UserID")).TrimStartAndEnd();
 	if (UserID.IsEmpty())
 	{
 		ErrorMessage = TEXT("UserID 없습니다.");
 		return;
 	}
-	const FString Nickname = UGameplayStatics::ParseOption(Options, TEXT("Nickname"));
+	const FString Nickname = UGameplayStatics::ParseOption(Options, TEXT("Nickname")).TrimStartAndEnd();
+	
 	if (Nickname.IsEmpty())
 	{
 		ErrorMessage = TEXT("Nickname 없습니다.");
@@ -39,14 +46,61 @@ void AHSGameModeBase::PreLogin(
 		ErrorMessage = TEXT("Nickname Database를 가져올 수 없습니다.");
 		return;
 	}
-	P48GameInstance->SetNickname(Nickname);
-	P48GameInstance->SetUserID(UserID);
+	
+	FString StoredNickname;
+	
+	const EP48NicknameLookupResult LookupResult =
+		DB->FindNicknameByUserID(UserID, StoredNickname);
+	
+	if (LookupResult == EP48NicknameLookupResult::Success)
+	{
+		AGameStateBase* CurrentGameState = GetWorld()->GetGameState<AGameStateBase>();
+		
+		if (IsValid(CurrentGameState))
+		{
+			for (APlayerState* ConnectedPlayerState : CurrentGameState->PlayerArray)
+			{
+				const AHSPlayerState* HSPlayerState = Cast<AHSPlayerState>(ConnectedPlayerState);
+				
+				if (!IsValid(HSPlayerState))
+				{
+					continue;
+				}
+				
+				if (HSPlayerState->GetNickname().Equals(StoredNickname, ESearchCase::IgnoreCase))
+				{
+					ErrorMessage = TEXT("UserAlreadyRegistered");
+					
+					return;
+				}
+			}
+		}
+		
+		P48GameInstance->SetNickname(StoredNickname);
+		P48GameInstance->SetUserID(UserID);
+		
+		UE_LOG(LogTemp, Log, TEXT("기존 사용자 로그인 성공 - UserID: %s / Nickname: %s"), *UserID, *StoredNickname);
+		
+		return;
+	}
+	
+	if (LookupResult != EP48NicknameLookupResult::NotFound)
+	{
+		ErrorMessage =
+			LookupResult == EP48NicknameLookupResult::InvalidUserID ? TEXT("InvalidUserID") : TEXT("default");
+		
+		return;
+	}
+	
 	EP48NicknameRegistrationResult Result = DB->TryRegisterNickname(UserID, Nickname);
 	
 	switch (Result)
 	{
 	case EP48NicknameRegistrationResult::Success:
-		UE_LOG(LogTemp, Log, TEXT("게임모드에서 로그인 성공 - UserID: %s / Nickname: %s"), *UserID, *Nickname);
+		P48GameInstance->SetNickname(Nickname);
+		P48GameInstance->SetUserID(UserID);
+		
+		UE_LOG(LogTemp, Log, TEXT("신규 사용자 로그인 성공 - UserID: %s / Nickname: %s"), *UserID, *Nickname);
 		break;
 		
 	case EP48NicknameRegistrationResult::DuplicateNickname:
