@@ -61,6 +61,7 @@ protected:
 	bool bWaitingForRoundMap = false;
 	FTimerHandle RoundMapPreparationTimerHandle;
 	void TryFinishRoundMapPreparation();
+	bool RespawnRoundParticipants(const TArray<APlayerController*>& Participants, int32 GenerationId);
 	virtual bool IsRoundSpawnParticipant(const AP48PlayerState* Player) const;
 
 

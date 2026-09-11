@@ -7,7 +7,6 @@
 #include "../../../Game/P48GameModeBase.h"
 #include "../../../GameplayMessageLibrary/Core/P48GameplayMessageLibrary.h"
 #include "../../../GameplayMessageLibrary/Core/P48GameplayMessageTags.h"
-#include "../../../GameplayMessageLibrary/Map/P48MapMessagePayloads.h"
 #include "../../../GameplayMessageLibrary/Match/P48MatchMessagePayloads.h"
 #include "../../../Character/P48PlayerState.h"
 #include "Engine/World.h"
@@ -675,10 +674,6 @@ void UP48PCGSeedWorldSubsystem::CompleteGeneration(const bool bSucceeded)
 	SetPhase(NewPhase);
 	if (!bAlreadyReported)
 	{
-		UP48GameplayMessageLibrary::Broadcast(
-			this,
-			P48GameplayTags::Map::GenerationCompleted,
-			FP48MapGenerationCompletedMessage(Snapshot.Revision, Snapshot.Seed, bSucceeded));
 		UE_LOG(LogTemp, Display, TEXT("[P48PCG] Generation=%d Seed=%d Players=%d Succeeded=%d"), Snapshot.Revision, Snapshot.Seed, Snapshot.RequiredPlayerCount, bSucceeded);
 	}
 	if (bAlreadyReported && !bPhaseChanged) { return; }

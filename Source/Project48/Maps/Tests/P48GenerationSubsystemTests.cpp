@@ -94,15 +94,31 @@ bool FP48PlayerStartRegistryTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Unmapped island is resolved from the selected position"), Second->IslandIndex, 7);
 	TestEqual(TEXT("Unique starts are counted"), Registry->GetRegisteredCount(11), 2);
 	TestEqual(TEXT("PlayerStart candidates remain pending before player count confirmation"), Registry->GetState(11), EP48PlayerStartLayoutState::Pending);
+	TArray<AP48PlayerStart*> ReadyStarts;
+	TestFalse(TEXT("Pending layouts do not expose spawn points"), Registry->GetReadyPlayerStarts(11, ReadyStarts));
+	TestEqual(TEXT("Failed queries clear the output array"), ReadyStarts.Num(), 0);
 	Registry->UpdateRequiredCount(11, 2);
 	TestEqual(TEXT("Matching selection and registration is ready"), Registry->GetState(11), EP48PlayerStartLayoutState::Ready);
+	TestTrue(TEXT("The active ready generation exposes spawn points"), Registry->GetReadyPlayerStarts(11, ReadyStarts));
+	TestEqual(TEXT("All required spawn points are returned"), ReadyStarts.Num(), 2);
+	if (ReadyStarts.Num() == 2)
+	{
+		TestEqual(TEXT("Spawn points are sorted by slot"), ReadyStarts[0]->SpawnSlotIndex, 0);
+		TestEqual(TEXT("The second spawn slot follows the first"), ReadyStarts[1]->SpawnSlotIndex, 1);
+		TestEqual(TEXT("Returned starts belong to the active generation"), ReadyStarts[0]->GenerationId, 11);
+		TestEqual(TEXT("Every returned start belongs to the active generation"), ReadyStarts[1]->GenerationId, 11);
+	}
 	TestEqual(TEXT("Old revisions cannot read the active registry"), Registry->GetRegisteredCount(10), 0);
+	TestFalse(TEXT("Old revisions cannot retrieve ready spawn points"), Registry->GetReadyPlayerStarts(10, ReadyStarts));
+	TestEqual(TEXT("A stale query does not retain active spawn points"), ReadyStarts.Num(), 0);
 
 	AP48PlayerStart* Stale = World->SpawnActor<AP48PlayerStart>();
 	Stale->GenerationId = 10;
 	TestFalse(TEXT("A stale generation cannot enter the active registry"), Registry->RegisterPlayerStart(Stale));
 	Registry->UnregisterPlayerStart(Second);
 	TestEqual(TEXT("Losing a required start invalidates readiness"), Registry->GetState(11), EP48PlayerStartLayoutState::Pending);
+	TestFalse(TEXT("An incomplete layout no longer exposes spawn points"), Registry->GetReadyPlayerStarts(11, ReadyStarts));
+	TestEqual(TEXT("An incomplete query clears the output array"), ReadyStarts.Num(), 0);
 	AP48PlayerStart* WrongPosition = World->SpawnActor<AP48PlayerStart>();
 	WrongPosition->SetActorLocation(FVector(500, 0, 0));
 	TestFalse(TEXT("Count alone cannot admit an unselected position"), Registry->RegisterPlayerStart(WrongPosition));

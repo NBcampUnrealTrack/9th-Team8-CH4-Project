@@ -10,11 +10,14 @@
 
 #include "P48GameStateBase.h"
 #include "../Character/P48PlayerState.h"
+#include "../Maps/Objects/Spawn/P48PlayerStart.h"
+#include "../Maps/Objects/Spawn/P48PlayerStartRegistrySubsystem.h"
 #include "../Maps/PCG/Common/P48PCGSeedState.h"
 #include "../Maps/PCG/Common/P48PCGSeedWorldSubsystem.h"
 #include "EngineUtils.h"
 
 
+#include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 
 namespace P48MapReadiness
@@ -507,6 +510,68 @@ bool AP48GameModeBase::IsRoundSpawnParticipant(const AP48PlayerState* Player) co
 	return IsValid(Player) && Player->IsMatchParticipant();
 }
 
+bool AP48GameModeBase::RespawnRoundParticipants(
+	const TArray<APlayerController*>& Participants,
+	const int32 GenerationId)
+{
+	UP48PlayerStartRegistrySubsystem* Registry = GetWorld()->GetSubsystem<UP48PlayerStartRegistrySubsystem>();
+	if (!Registry)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[RoundSpawn] PlayerStart registry not found."));
+		return false;
+	}
+
+	TArray<AP48PlayerStart*> PlayerStarts;
+	if (!Registry->GetReadyPlayerStarts(GenerationId, PlayerStarts)
+		|| PlayerStarts.Num() < Participants.Num())
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("[RoundSpawn] PlayerStarts are not ready. Generation=%d Starts=%d Participants=%d"),
+			GenerationId, PlayerStarts.Num(), Participants.Num());
+		return false;
+	}
+
+	// Pawn을 제거하기 전에 모든 Controller, PlayerStart와 Pawn Class를 먼저 검증한다.
+	for (int32 Index = 0; Index < Participants.Num(); ++Index)
+	{
+		APlayerController* PlayerController = Participants[Index];
+		if (!IsValid(PlayerController)
+			|| !IsValid(PlayerStarts[Index])
+			|| !GetDefaultPawnClassForController(PlayerController))
+		{
+			UE_LOG(LogTemp, Error, TEXT("[RoundSpawn] Invalid respawn input at index %d."), Index);
+			return false;
+		}
+	}
+
+	for (int32 Index = 0; Index < Participants.Num(); ++Index)
+	{
+		APlayerController* PlayerController = Participants[Index];
+		AP48PlayerStart* PlayerStart = PlayerStarts[Index];
+
+		if (APawn* OldPawn = PlayerController->GetPawn())
+		{
+			PlayerController->UnPossess();
+			OldPawn->Destroy();
+		}
+
+		RestartPlayerAtPlayerStart(PlayerController, PlayerStart);
+		if (!IsValid(PlayerController->GetPawn()))
+		{
+			UE_LOG(LogTemp, Error,
+				TEXT("[RoundSpawn] Failed to respawn %s at slot %d."),
+				*GetNameSafe(PlayerController), PlayerStart->SpawnSlotIndex);
+			return false;
+		}
+
+		UE_LOG(LogTemp, Display,
+			TEXT("[RoundSpawn] Respawned %s at slot %d. Generation=%d"),
+			*GetNameSafe(PlayerController), PlayerStart->SpawnSlotIndex, GenerationId);
+	}
+
+	return true;
+}
+
 void AP48GameModeBase::TryFinishRoundMapPreparation()
 {
 	AP48GameStateBase* GS = GetGameState<AP48GameStateBase>();
@@ -542,11 +607,16 @@ void AP48GameModeBase::TryFinishRoundMapPreparation()
 		return;
 	}
 
-	// TODO: 플레이어 담당의 라운드 복구/재배치 완료 처리와 연결한다.
+	if (P48MapReadiness::RequiresNetworkSeed(GetWorld())
+		&& !RespawnRoundParticipants(Participants, SeedState->State.Revision))
+	{
+		return;
+	}
+
 	bWaitingForRoundMap = false;
 	GetWorldTimerManager().ClearTimer(RoundMapPreparationTimerHandle);
-	UE_LOG(LogTemp, Display, TEXT("[RoundMap] Ready!! Participants=%d"), Participants.Num());
-	// TODO: 플레이어 담당의 Pawn 재생성·재배치 완료 처리와 연결한 뒤 카운트다운을 시작하도록 변경한다.
+	UE_LOG(LogTemp, Display, TEXT("[RoundMap] Ready and players respawned. Participants=%d"), Participants.Num());
+	// TODO: 플레이어 담당의 클라이언트 Pawn 준비 완료 응답과 연결한 뒤 카운트다운을 시작한다.
 	StartCountdown();
 }
 
