@@ -15,13 +15,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|PlayerSpawn", meta = (PCG_Overridable))
 	FP48PlayerSpawnSettings SelectionSettings;
 
-#if WITH_EDITORONLY_DATA
+	/** Debug override for PlayerStart count only; does not change seed generation or pawn spawning. */
 	UPROPERTY(EditAnywhere, Category = "Map|Debug")
 	bool bOverridePlayerCountForDebug = false;
 
 	UPROPERTY(EditAnywhere, Category = "Map|Debug", meta = (EditCondition = "bOverridePlayerCountForDebug", ClampMin = "1", UIMin = "1"))
 	int32 DebugPlayerCount = 1;
-#endif
 
 	virtual bool UseSeed() const override { return true; }
 

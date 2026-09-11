@@ -1,16 +1,15 @@
 #include "P48PCGPlayerSpawnSelectorSettings.h"
-#include "../Common/P48PCGSeedHelpers.h"
-#include "../Common/P48PCGSeedState.h"
-#include "../../Utilities/P48MapPlayerCountResolver.h"
 
+#include "../Common/P48PCGSeedHelpers.h"
+#include "../Common/P48PCGSeedWorldSubsystem.h"
 #include "../Common/P48PCGSpawnAttributeNames.h"
+#include "../../Objects/Spawn/P48PlayerStartRegistrySubsystem.h"
 #include "Data/PCGPointData.h"
 #include "Helpers/PCGHelpers.h"
 #include "Metadata/PCGMetadata.h"
 #include "Metadata/PCGMetadataAttribute.h"
 #include "PCGContext.h"
 #include "Engine/World.h"
-#include "EngineUtils.h"
 
 #define LOCTEXT_NAMESPACE "P48PCGPlayerSpawnSelectorSettings"
 
@@ -22,7 +21,7 @@ FText UP48PCGPlayerSpawnSelectorSettings::GetDefaultNodeTitle() const
 
 FText UP48PCGPlayerSpawnSelectorSettings::GetNodeTooltipText() const
 {
-	return LOCTEXT("NodeTooltip", "Uses the current server player count and selects safe surface candidates, preferring unused islands and horizontal separation.");
+	return LOCTEXT("NodeTooltip", "Waits for the confirmed runtime player count, then selects PlayerStarts from safe surface candidates while preferring unused islands and horizontal separation.");
 }
 #endif
 
@@ -53,29 +52,68 @@ bool FP48PCGPlayerSpawnSelectorElement::ExecuteInternal(FPCGContext* Context) co
 	{
 		return true;
 	}
+
 	UWorld* World = Context->ExecutionSource.IsValid() ? Context->ExecutionSource->GetExecutionState().GetWorld() : nullptr;
+	const bool bGameWorld = World && World->IsGameWorld();
 	const bool bClient = World && World->GetNetMode() == NM_Client;
-	AP48PCGSeedState* SeedState = nullptr;
-	if (World && World->IsGameWorld())
+	FP48PCGGenerationContext GenerationContext;
+	if (!P48ReadGenerationContext(Context, GenerationContext))
 	{
-		for (TActorIterator<AP48PCGSeedState> It(World); It; ++It)
-		{
-			SeedState = *It;
-			break;
-		}
+		GenerationContext.Seed = Context->GetSeed();
+	}
+	if (bGameWorld && !GenerationContext.IsValid())
+	{
+		PCGE_LOG(Error, GraphAndLog, LOCTEXT("MissingGenerationContext", "No valid map Generation Context is available."));
+		return true;
 	}
 
-	const TArray<FPCGTaggedData> Inputs = Context->InputData.GetInputsByPin(PCGPinConstants::DefaultInputLabel);
-	const int32 CurrentPlayerCount = FP48MapPlayerCountResolver::Resolve(World);
-	int32 RequestedCount = CurrentPlayerCount > 0 ? CurrentPlayerCount : FMath::Max(1, Settings->SelectionSettings.SpawnCount);
-#if WITH_EDITORONLY_DATA
-	if (Settings->bOverridePlayerCountForDebug)
+#if !UE_BUILD_SHIPPING
+	if (bGameWorld && !bClient && Settings->bOverridePlayerCountForDebug)
 	{
-		RequestedCount = FMath::Max(1, Settings->DebugPlayerCount);
-		UE_LOG(LogTemp, Display, TEXT("[P48PlayerSpawnDebug] ActualPlayerCount=%d OverridePlayerCount=%d"), CurrentPlayerCount, RequestedCount);
+		if (UP48PCGSeedWorldSubsystem* Coordinator = World->GetSubsystem<UP48PCGSeedWorldSubsystem>())
+		{
+			Coordinator->ApplyDebugPlayerCount(FMath::Max(1, Settings->DebugPlayerCount));
+			GenerationContext = Coordinator->GetGenerationContext();
+		}
 	}
 #endif
+
+	if (bGameWorld && GenerationContext.RequiredPlayerCount <= 0)
+	{
+		if (UP48PCGSeedWorldSubsystem* Coordinator = World->GetSubsystem<UP48PCGSeedWorldSubsystem>())
+		{
+			Context->bIsPaused = true;
+			Coordinator->RegisterPlayerCountWaiter(
+				GenerationContext.GenerationId,
+				Context->GetOrCreateHandle());
+			return false;
+		}
+
+		PCGE_LOG(Error, GraphAndLog, LOCTEXT("MissingSeedCoordinator", "PlayerStart generation cannot wait because the map seed coordinator is unavailable."));
+		return true;
+	}
+
+	int32 RequestedCount = bGameWorld
+		? GenerationContext.RequiredPlayerCount
+		: FMath::Max(1, Settings->SelectionSettings.SpawnCount);
+#if WITH_EDITORONLY_DATA
+	if (!bGameWorld && Settings->bOverridePlayerCountForDebug)
+	{
+		RequestedCount = FMath::Max(1, Settings->DebugPlayerCount);
+	}
+#endif
+
+	UP48PlayerStartRegistrySubsystem* Registry = bGameWorld && !bClient
+		? World->GetSubsystem<UP48PlayerStartRegistrySubsystem>()
+		: nullptr;
 	bool bLayoutReported = false;
+	const TArray<FPCGTaggedData> Inputs = Context->InputData.GetInputsByPin(PCGPinConstants::DefaultInputLabel);
+	if (Inputs.Num() != 1)
+	{
+		PCGE_LOG(Error, GraphAndLog, LOCTEXT("SingleCandidateSet", "Merge candidate point data before Player Spawn Selector; exactly one candidate set is required."));
+		if (Registry) { Registry->ReportSelectedStarts(GenerationContext.GenerationId, {}); }
+		return true;
+	}
 	for (const FPCGTaggedData& Input : Inputs)
 	{
 		const UPCGBasePointData* InputPoints = Cast<UPCGBasePointData>(Input.Data);
@@ -95,7 +133,8 @@ bool FP48PCGPlayerSpawnSelectorElement::ExecuteInternal(FPCGContext* Context) co
 		TArray<int32> Remaining;
 		for (int32 Index = 0; Index < InputPoints->GetNumPoints(); ++Index)
 		{
-			if (!CanSpawnAttribute || CanSpawnAttribute->GetValueFromItemKey(InputPoints->GetMetadataEntry(Index)))
+			if (IslandAttribute->GetValueFromItemKey(InputPoints->GetMetadataEntry(Index)) >= 0
+				&& (!CanSpawnAttribute || CanSpawnAttribute->GetValueFromItemKey(InputPoints->GetMetadataEntry(Index))))
 			{
 				Remaining.Add(Index);
 			}
@@ -106,7 +145,7 @@ bool FP48PCGPlayerSpawnSelectorElement::ExecuteInternal(FPCGContext* Context) co
 		const int32 TargetCount = FMath::Min(RequestedCount, Remaining.Num());
 		if (!Remaining.IsEmpty())
 		{
-			FRandomStream Random(PCGHelpers::ComputeSeed(Settings->SelectionSettings.RandomSeed, P48ReadNetworkSeed(Context)));
+			FRandomStream Random(PCGHelpers::ComputeSeed(Settings->SelectionSettings.RandomSeed, GenerationContext.Seed));
 			const int32 FirstRemainingIndex = Random.RandRange(0, Remaining.Num() - 1);
 			const int32 SelectedPointIndex = Remaining[FirstRemainingIndex];
 			Selected.Add(SelectedPointIndex);
@@ -166,14 +205,15 @@ bool FP48PCGPlayerSpawnSelectorElement::ExecuteInternal(FPCGContext* Context) co
 			auto* SlotAttribute = OutputMetadata->CreateAttribute<int32>(P48PCGSpawnAttributeNames::SpawnSlotIndex, INDEX_NONE, false, false);
 			auto* GenerationAttribute = OutputMetadata->CreateAttribute<int32>(P48PCGSpawnAttributeNames::GenerationId, 0, false, false);
 			TPCGValueRange<FTransform> Transforms = OutputPoints->GetTransformValueRange();
+			const float EffectiveSpawnHeight = FMath::Max(0.0f, Settings->SelectionSettings.SpawnHeight);
 			for (int32 Index = 0; Index < OutputPoints->GetNumPoints(); ++Index)
 			{
 				FTransform Transform = Transforms[Index];
-				Transform.AddToTranslation(FVector(0.0, 0.0, Settings->SelectionSettings.SpawnHeight));
+				Transform.AddToTranslation(FVector(0.0, 0.0, EffectiveSpawnHeight));
 				Transforms[Index] = Transform;
 				const PCGMetadataEntryKey Entry = OutputPoints->GetMetadataEntry(Index);
 				SlotAttribute->SetValue(Entry, Index);
-				GenerationAttribute->SetValue(Entry, SeedState ? SeedState->State.Revision : 0);
+				GenerationAttribute->SetValue(Entry, GenerationContext.GenerationId);
 			}
 		}
 
@@ -181,9 +221,15 @@ bool FP48PCGPlayerSpawnSelectorElement::ExecuteInternal(FPCGContext* Context) co
 		{
 			PCGE_LOG(Warning, GraphAndLog, FText::Format(LOCTEXT("InsufficientSpawnPoints", "Selected {0} of {1} requested player spawn points. Reduce Min Spawn Distance or enable more islands for player spawning."), FText::AsNumber(Selected.Num()), FText::AsNumber(RequestedCount)));
 		}
-		if (SeedState && SeedState->HasAuthority())
+		if (Registry)
 		{
-			SeedState->ReportPlayerStartLayout(RequestedCount, Selected.Num());
+			TArray<FP48SelectedPlayerStart> Starts;
+			for (int32 Index = 0; Index < OutputPoints->GetNumPoints(); ++Index)
+			{
+				Starts.Add({OutputPoints->GetTransform(Index).GetLocation(),
+					IslandAttribute->GetValueFromItemKey(InputPoints->GetMetadataEntry(Selected[Index]))});
+			}
+			Registry->ReportSelectedStarts(GenerationContext.GenerationId, Starts);
 			bLayoutReported = true;
 		}
 
@@ -192,11 +238,10 @@ bool FP48PCGPlayerSpawnSelectorElement::ExecuteInternal(FPCGContext* Context) co
 		Output.Pin = PCGPinConstants::DefaultOutputLabel;
 	}
 
-	if (SeedState && SeedState->HasAuthority() && !bLayoutReported)
+	if (Registry && !bLayoutReported)
 	{
-		SeedState->ReportPlayerStartLayout(RequestedCount, 0);
+		Registry->ReportSelectedLayout(GenerationContext.GenerationId, 0);
 	}
-
 	return true;
 }
 

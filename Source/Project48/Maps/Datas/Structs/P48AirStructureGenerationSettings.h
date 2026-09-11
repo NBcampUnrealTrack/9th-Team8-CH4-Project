@@ -19,6 +19,9 @@ struct PROJECT48_API FP48AirStructureGenerationSettings
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Air")
 	EP48AirPlacementMode PlacementMode = EP48AirPlacementMode::SkyIsland;
+	/** 배치 시도 초기에 덜 사용한 구조물을 우선합니다. 거리/충돌 조건을 만족하지 않는 종류까지 보장하지는 않습니다. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Air")
+	bool bDistributeStructureTypesBeforeRepeating = true;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Air", meta = (ClampMin = "1"))
 	int32 TargetCount = 10;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Air")
@@ -26,7 +29,7 @@ struct PROJECT48_API FP48AirStructureGenerationSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Air", meta = (ClampMin = "0.0", Units = "cm"))
 	FVector2D MapSize = FVector2D(40000.0f, 40000.0f);
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Air", meta = (Units = "cm"))
-	FVector2D HeightRange = FVector2D(-1000.0f, 1000.0f);
+	FVector2D HeightRange = FVector2D(-1000.0f, 2000.0f);
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Air", meta = (ClampMin = "0.0", Units = "cm"))
 	float GlobalMinGap = 500.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Air", meta = (ClampMin = "1"))
@@ -36,7 +39,7 @@ struct PROJECT48_API FP48AirStructureGenerationSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Air|SkyIsland", meta = (EditCondition = "PlacementMode == EP48AirPlacementMode::SkyIsland"))
 	bool bRequireConnectableLayout = true;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Air|SkyIsland", meta = (EditCondition = "PlacementMode == EP48AirPlacementMode::SkyIsland", ClampMin = "1.0", Units = "cm"))
-	float MaxIslandCenterDistance = 5000.0f;
+	float MaxIslandCenterDistance = 3000.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Air|SkyIsland", meta = (EditCondition = "PlacementMode == EP48AirPlacementMode::SkyIsland", ClampMin = "0.0", Units = "cm"))
 	float HeightStep = 250.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Air|SkyIsland", meta = (EditCondition = "PlacementMode == EP48AirPlacementMode::SkyIsland && bRequireConnectableLayout"))

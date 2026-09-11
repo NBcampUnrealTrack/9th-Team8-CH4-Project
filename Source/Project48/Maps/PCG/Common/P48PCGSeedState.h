@@ -2,38 +2,32 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "P48PCGGenerationTypes.h"
 #include "P48PCGSeedState.generated.h"
 
-class UPCGComponent;
-class APlayerController;
 class AP48PlayerStart;
+class APlayerController;
+class UPCGComponent;
 
-USTRUCT()
-struct FP48PCGSeedSnapshot
-{
-	GENERATED_BODY()
-	UPROPERTY()
-	int32 Seed = 0;
-	UPROPERTY()
-	int32 Revision = 0;
-	UPROPERTY()
-	bool bMapReady = false;
-};
-
-/** Network Seed 노드가 자동 생성하는 복제 상태입니다. BP/레벨 배치 불필요. */
+/** 생성 스냅샷을 복제하고 기존 호출을 담당 Subsystem으로 전달하는 얇은 네트워크 경계입니다. */
 UCLASS(NotBlueprintable, NotPlaceable, Transient)
 class PROJECT48_API AP48PCGSeedState : public AActor
 {
 	GENERATED_BODY()
+
 public:
 	AP48PCGSeedState();
 	virtual void BeginPlay() override;
-	virtual void Tick(float DeltaSeconds) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
-	UPROPERTY(Replicated)
-	FP48PCGSeedSnapshot State;
+
+	UPROPERTY(ReplicatedUsing = OnRep_State)
+	FP48PCGGenerationSnapshot State;
+
+	void SetGenerationSnapshot(const FP48PCGGenerationSnapshot& InSnapshot);
+
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Map|Seed")
 	void SetMapSeed(int32 Seed);
+
 	void RegisterConsumer(UPCGComponent* Component);
 	void ReportPlayerStartLayout(int32 RequestedCount, int32 SelectedCount);
 	void RegisterGeneratedPlayerStart(AP48PlayerStart* PlayerStart);
@@ -41,27 +35,9 @@ public:
 	void NotifyClientGenerationComplete(APlayerController* PlayerController, int32 Revision);
 	void NotifyControllerJoined(APlayerController* PlayerController);
 	bool IsReadyForController(const APlayerController* PlayerController) const;
-	bool IsMapReady() const { return State.bMapReady; }
+	bool IsMapReady() const { return State.IsReady(); }
+
 private:
-	TMap<TWeakObjectPtr<UPCGComponent>, int32> Consumers;
-	TMap<TWeakObjectPtr<UPCGComponent>, int32> CompletedConsumers;
-	TMap<TWeakObjectPtr<APlayerController>, int32> ReadyControllers;
-	TSet<TWeakObjectPtr<UPCGComponent>> BoundConsumers;
-	TSet<TWeakObjectPtr<UPCGComponent>> PendingGenerationConsumers;
-	TSet<TWeakObjectPtr<AP48PlayerStart>> RegisteredPlayerStarts;
-	bool bServerGenerationComplete = false;
-	bool bPlayerStartLayoutRequired = false;
-	bool bPlayerStartLayoutValid = false;
-	bool bConsumerGenerationScheduled = false;
-	bool bPlayerStartTimeoutLogged = false;
-	int32 RequestedPlayerStartCount = 0;
-	int32 SelectedPlayerStartCount = 0;
-	int32 LastReportedRevision = 0;
-	double PlayerStartRegistrationDeadline = 0.0;
-	void HandleGraphGenerated(UPCGComponent* Component);
-	bool IsLocalGenerationComplete() const;
-	int32 GetRegisteredPlayerStartCount() const;
-	void RefreshPlayerStartReadiness();
-	void GeneratePendingConsumers();
-	void UpdateMapReady();
+	UFUNCTION()
+	void OnRep_State();
 };

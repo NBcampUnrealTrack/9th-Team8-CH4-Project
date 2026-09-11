@@ -3,13 +3,13 @@
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Engine/World.h"
 
-bool FP48IslandSurfaceSampler::TraceTop(UWorld* World, UStaticMesh* Mesh, const FTransform& IslandTransform, const FBox& WorldBounds, const FVector& XY, FHitResult& OutHit, FP48IslandSurfaceTraceStats* Stats)
+bool FP48IslandSurfaceSampler::TraceTop(UWorld* World, UStaticMesh* Mesh, const FTransform& IslandTransform, const FBox& WorldBounds, const FVector& XY, FHitResult& OutHit, FP48IslandSurfaceTraceStats* Stats, const bool bRequirePawnSupport)
 {
 	if (!World || !Mesh) { return false; }
 	FCollisionObjectQueryParams Objects;
 	Objects.AddObjectTypesToQuery(ECC_WorldStatic);
 	Objects.AddObjectTypesToQuery(ECC_WorldDynamic);
-	FCollisionQueryParams Query(SCENE_QUERY_STAT(P48IslandSurface), true);
+	FCollisionQueryParams Query(SCENE_QUERY_STAT(P48IslandSurface), !bRequirePawnSupport);
 	TArray<FHitResult> Hits;
 	World->LineTraceMultiByObjectType(Hits, FVector(XY.X, XY.Y, WorldBounds.Max.Z + 10.0), FVector(XY.X, XY.Y, WorldBounds.Min.Z - 10.0), Objects, Query);
 	if (Stats)
@@ -24,6 +24,10 @@ bool FP48IslandSurfaceSampler::TraceTop(UWorld* World, UStaticMesh* Mesh, const 
 		if (!Component || Component->GetStaticMesh() != Mesh)
 		{
 			if (Stats) { ++Stats->MeshMismatchHits; }
+			continue;
+		}
+		if (bRequirePawnSupport && Component->GetCollisionResponseToChannel(ECC_Pawn) != ECR_Block)
+		{
 			continue;
 		}
 		FTransform HitTransform = Component->GetComponentTransform();

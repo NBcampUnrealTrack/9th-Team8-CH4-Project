@@ -22,5 +22,6 @@ struct FP48IslandSurfaceTraceStats
 class FP48IslandSurfaceSampler
 {
 public:
-	static bool TraceTop(UWorld* World, UStaticMesh* Mesh, const FTransform& IslandTransform, const FBox& WorldBounds, const FVector& XY, FHitResult& OutHit, FP48IslandSurfaceTraceStats* Stats = nullptr);
+	/** PlayerStart sampling requires simple collision that blocks Pawn; bridge sampling may use the visual surface. */
+	static bool TraceTop(UWorld* World, UStaticMesh* Mesh, const FTransform& IslandTransform, const FBox& WorldBounds, const FVector& XY, FHitResult& OutHit, FP48IslandSurfaceTraceStats* Stats = nullptr, bool bRequirePawnSupport = false);
 };

@@ -21,6 +21,9 @@ struct PROJECT48_API FP48BridgeGenerationSettings
 	float AnchorInset = 100.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Bridge", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float AdditionalBridgeChance = 0.0f;
+	/** 방향이 반대여도 양 끝점이 이 거리 이내이면 같은 다리로 처리합니다. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Bridge", meta = (ClampMin = "0.0", Units = "cm"))
+	float DuplicateEndpointTolerance = 10.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Bridge")
 	int32 RandomSeed = 54321;
 };
