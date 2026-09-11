@@ -1,5 +1,6 @@
 #include "P48PlayerNameWidgetComponent.h"
 #include "P48PlayerNameWidget.h"
+#include "HS/HSPlayerState.h"
 #include "Project48/Character/P48PlayerCharacter.h"
 #include "Project48/Character/P48PlayerState.h"
 
@@ -36,7 +37,7 @@ void UP48PlayerNameWidgetComponent::UpdateNickname()
 		UE_LOG(LogTemp, Error, TEXT("P48Character생성 못함"));
 	}
 	
-	AP48PlayerState* PS = Cast<AP48PlayerState>(P48Character->GetPlayerState());
+	AHSPlayerState* PS = Cast<AHSPlayerState>(P48Character->GetPlayerState());
 	if (IsValid(PS) == false)
 	{
 		UE_LOG(LogTemp, Error, TEXT("PS생성 못함"));
@@ -49,5 +50,5 @@ void UP48PlayerNameWidgetComponent::UpdateNickname()
 		UE_LOG(LogTemp, Error, TEXT("NW생성 못함"));
 		return;
 	}
-	NicknameWidget->SetPlayerName(PS->GetPlayerName());
+	NicknameWidget->SetPlayerName(PS->GetNickname());
 }

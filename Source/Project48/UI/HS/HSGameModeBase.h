@@ -9,4 +9,11 @@ class PROJECT48_API AHSGameModeBase : public AP48GameModeBase
 {
 	GENERATED_BODY()
 	
+	virtual void PreLogin(
+		const FString& Options,
+		const FString& Address,
+		const FUniqueNetIdRepl& UniqueId,
+		FString& ErrorMessage) override;
+	
+	virtual void PostLogin(APlayerController* NewPC) override;
 };
