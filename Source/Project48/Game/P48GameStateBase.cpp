@@ -4,6 +4,8 @@
 #include "P48GameStateBase.h"
 #include "Net/UnrealNetwork.h"
 #include "Project48/Character/P48PlayerState.h"
+#include "Engine/GameInstance.h"
+#include "Project48/Lobby/P48LobbyTravelSubsystem.h"
 
 void AP48GameStateBase::BeginPlay()
 {
@@ -24,12 +26,41 @@ void AP48GameStateBase::GetLifetimeReplicatedProps(
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	
 	DOREPLIFETIME(AP48GameStateBase, MatchPhase);
+	DOREPLIFETIME(AP48GameStateBase, bLobbyReturnRequested);
 	DOREPLIFETIME(AP48GameStateBase, CurrentRound);
 	DOREPLIFETIME(AP48GameStateBase, RoundWinner);
 	DOREPLIFETIME(AP48GameStateBase, bRoundDraw);
 	DOREPLIFETIME(AP48GameStateBase, MatchWinner);
 	DOREPLIFETIME(AP48GameStateBase, bIsTiebreaker);
 	DOREPLIFETIME(AP48GameStateBase, RoundEndServerTime);
+}
+
+void AP48GameStateBase::RequestLobbyReturn()
+{
+	if (!HasAuthority() || MatchPhase != EP48MatchPhase::MatchEnd || bLobbyReturnRequested)
+	{
+		return;
+	}
+
+	bLobbyReturnRequested = true;
+	ForceNetUpdate();
+}
+
+void AP48GameStateBase::OnRep_LobbyReturnRequested()
+{
+	if (!bLobbyReturnRequested || GetNetMode() != NM_Client) return;
+	
+	UGameInstance* GI = GetGameInstance();
+	UP48LobbyTravelSubsystem* TravelSubsystem = GI ? GI->GetSubsystem<UP48LobbyTravelSubsystem>() : nullptr;
+	if (!IsValid(TravelSubsystem) || !TravelSubsystem->HasLobbyReturnContext())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Match] Cannot return to lobby"));
+		return;
+	}
+	if (!TravelSubsystem->ReturnToLobby())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Match] Lobby return could not be started / already in progress."));
+	}
 }
 
 void AP48GameStateBase::SetRoundEndServerTime(double NewEndTime)

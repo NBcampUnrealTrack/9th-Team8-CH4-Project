@@ -56,9 +56,13 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Match", meta = (ClampMin = "1", UIMin = "1"))
 	int32 DefaultRoundCount = 3;
 
+	// 매치 끝나고 로비로 돌아가기까지 대기하는 시간입니다.
+	UPROPERTY(EditDefaultsOnly, Category = "Match|Lobby", meta = (ClampMin = "0.1"))
+	float ReturnLobbyDelay = 5.0f;
+
 	// 일반 라운드와 결정전에 공통으로 적용할 제한 시간
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Round", meta = (ClampMin = "1.0"))
-	float RoundTimeLimit = 10.0f;
+	float RoundTimeLimit = 300.0f;
 
 	FTimerHandle RoundTimeLimitTimerHandle;
 
@@ -83,6 +87,7 @@ private:
 
 	// Winner가 유효하면 승리, nullptr이면 무승부로 Match 종료
 	void FinishMatch(AP48PlayerState* Winner);
+	void RequestLobbyReturn();
 
 	// 서버에서 생성한 규칙 객체 보관
 	UPROPERTY(Transient)
@@ -93,6 +98,7 @@ private:
 
 	FTimerHandle RoundEndCheckTimerHandle;
 	FTimerHandle LogoutCheckTimerHandle;
+	FTimerHandle ReturnLobbyTimerHandle;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Match")
 	float RoundEndCheckDelay = 0.1f;
