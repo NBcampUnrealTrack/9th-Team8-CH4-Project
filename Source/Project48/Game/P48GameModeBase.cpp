@@ -75,6 +75,49 @@ bool AP48GameModeBase::IsMapReadyForPlayer(const APlayerController* PlayerContro
 	return SeedState && SeedState->IsMapReady() && SeedState->IsReadyForController(PlayerController);
 }
 
+AActor* AP48GameModeBase::FindPlayerStart_Implementation(AController* Player, const FString& IncomingName)
+{
+	if (!Player || !P48MapReadiness::RequiresNetworkSeed(GetWorld()))
+	{
+		return Super::FindPlayerStart_Implementation(Player, IncomingName);
+	}
+
+	const AP48PCGSeedState* SeedState = P48MapReadiness::FindSeedState(GetWorld());
+	UP48PlayerStartRegistrySubsystem* Registry = GetWorld()->GetSubsystem<UP48PlayerStartRegistrySubsystem>();
+	TArray<AP48PlayerStart*> PlayerStarts;
+	if (!SeedState || !SeedState->IsMapReady() || !Registry
+		|| !Registry->GetReadyPlayerStarts(SeedState->State.Revision, PlayerStarts))
+	{
+		return Super::FindPlayerStart_Implementation(Player, IncomingName);
+	}
+
+	TArray<APlayerController*> Participants;
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		APlayerController* PlayerController = It->Get();
+		if (PlayerController && IsRoundSpawnParticipant(PlayerController->GetPlayerState<AP48PlayerState>()))
+		{
+			Participants.Add(PlayerController);
+		}
+	}
+
+	const int32 ParticipantIndex = Participants.IndexOfByKey(Cast<APlayerController>(Player));
+	if (PlayerStarts.IsValidIndex(ParticipantIndex))
+	{
+		AP48PlayerStart* SelectedStart = PlayerStarts[ParticipantIndex];
+		UE_LOG(LogTemp, Display,
+			TEXT("[InitialSpawn] Selected PCG PlayerStart for %s. Slot=%d Location=%s Generation=%d"),
+			*GetNameSafe(Player), SelectedStart->SpawnSlotIndex,
+			*SelectedStart->GetActorLocation().ToCompactString(), SeedState->State.Revision);
+		return SelectedStart;
+	}
+
+	UE_LOG(LogTemp, Warning,
+		TEXT("[InitialSpawn] No PCG PlayerStart assignment for %s. Participants=%d Starts=%d Generation=%d"),
+		*GetNameSafe(Player), Participants.Num(), PlayerStarts.Num(), SeedState->State.Revision);
+	return Super::FindPlayerStart_Implementation(Player, IncomingName);
+}
+
 void AP48GameModeBase::NotifyMapGenerationReadinessChanged()
 {
 	if (!HasAuthority()) { return; }
