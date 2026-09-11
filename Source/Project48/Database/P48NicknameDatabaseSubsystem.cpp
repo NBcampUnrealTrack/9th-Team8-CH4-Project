@@ -149,7 +149,14 @@ bool UP48NicknameDatabaseSubsystem::IsNicknameValid(const FString& Nickname)
 	
 	for (const TCHAR Character : TrimmedNickname)
 	{
-		if (!FChar::IsAlnum(Character) && Character != TEXT('_'))
+		const bool bIsEnglishLetter =
+			(Character >= TEXT('A') && Character <= TEXT('Z')) ||
+			(Character >= TEXT('a') && Character <= TEXT('z'));
+		
+		const bool bIsDigit = 
+			Character >= TEXT('0') && Character <= TEXT('9');
+		
+		if (!bIsEnglishLetter && !bIsDigit && Character != TEXT('_'))
 		{
 			return false;
 		}
@@ -520,7 +527,7 @@ void UP48NicknameDatabaseSubsystem::RunDatabaseTests()
 		TEXT("[DB TEST] 등록 닉네임 조회: %s"),
 		bLookupPassed ? TEXT("PASS") : TEXT("FAIL"));
 	
-	// 규칙에 마지 않는 닉네임 등록 차단
+	// 규칙에 맞지 않는 닉네임 등록 차단
 	const EP48NicknameRegistrationResult InvalidRegistration =
 		TryRegisterNickname(TestUserB, TEXT("!"));
 	
@@ -530,5 +537,23 @@ void UP48NicknameDatabaseSubsystem::RunDatabaseTests()
 		TEXT("[DB TEST] 잘못된 형식 차단: %s"),
 		InvalidRegistration ==
 		EP48NicknameRegistrationResult::InvalidFormat ? TEXT("PASS") : TEXT("FAIL"));
+	
+	const EP48NicknameRegistrationResult KoreanResult =
+		TryRegisterNickname(TEXT("TestKoreanUser"), TEXT("플레이어"));
+	
+	UE_LOG(
+		LogP48NicknameDatabase,
+		Log,
+		TEXT("[DB TEST] 한글 닉네임 거절: %s"),
+		KoreanResult == EP48NicknameRegistrationResult::InvalidFormat ? TEXT("PASS") : TEXT("FAIL"));
+	
+	const EP48NicknameRegistrationResult MixedResult =
+		TryRegisterNickname(TEXT("TestMixedUser"), TEXT("Player한글"));
+	
+	UE_LOG(
+		LogP48NicknameDatabase,
+		Log,
+		TEXT("[DB TEST] 영문+한글 닉네임 거절: %s"),
+		MixedResult == EP48NicknameRegistrationResult::InvalidFormat ? TEXT("PASS") : TEXT("FAIL"));
 }
 #endif
