@@ -309,11 +309,25 @@ void AP48SurvivalGameMode::FinishMatch(AP48PlayerState* Winner)
 		MatchFlowRule->Reset();
 	}
 	GS->SetMatchPhase(EP48MatchPhase::MatchEnd);
+	GS->ForceNetUpdate();
+	GetWorldTimerManager().SetTimer(
+		ReturnLobbyTimerHandle, this, &ThisClass::RequestLobbyReturn,
+		FMath::Max(0.1f, ReturnLobbyDelay), false);
+}
+
+void AP48SurvivalGameMode::RequestLobbyReturn()
+{
+	if (!HasAuthority()) return;
+	if (AP48GameStateBase* GS = GetGameState<AP48GameStateBase>())
+	{
+		GS->RequestLobbyReturn();
+	}
 }
 
 void AP48SurvivalGameMode::ClearMatchTimers()
 {
 	Super::ClearMatchTimers();
+	GetWorldTimerManager().ClearTimer(ReturnLobbyTimerHandle);
 	GetWorldTimerManager().ClearTimer(RoundEndCheckTimerHandle);
 	GetWorldTimerManager().ClearTimer(LogoutCheckTimerHandle);
 	GetWorldTimerManager().ClearTimer(RoundTimeLimitTimerHandle);

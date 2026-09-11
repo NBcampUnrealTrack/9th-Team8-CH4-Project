@@ -42,6 +42,9 @@ public:
 		TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	
 	void SetMatchPhase(EP48MatchPhase NewMatchPhase);
+
+	// 서버가 결과 표시 대기 후 각 클라이언트의 로비 복귀를 요청한다.
+	void RequestLobbyReturn();
 	
 	void SetCurrentRound(int32 NewCurrentRound);
 	
@@ -109,6 +112,12 @@ public:
 	int32 CurrentRound = 0;
 	
 protected:
+	UPROPERTY(ReplicatedUsing = OnRep_LobbyReturnRequested)
+	bool bLobbyReturnRequested = false;
+
+	UFUNCTION()
+	void OnRep_LobbyReturnRequested();
+
 	// 매초 남은 시간을 복제하는 대신 종료 시각만 공유
 	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Round")
 	double RoundEndServerTime = 0.0;
