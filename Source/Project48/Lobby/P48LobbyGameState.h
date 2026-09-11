@@ -7,12 +7,43 @@
 class AP48PlayerState;
 
 USTRUCT(BlueprintType)
+struct FP48LobbyRoomInfo
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Lobby")
+	int32 RoomId = INDEX_NONE;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Lobby")
+	FString RoomTitle;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Lobby")
+	int32 CurrentPlayers = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Lobby")
+	int32 MaxPlayers = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Lobby")
+	bool bRequiresPassword = false;
+
+	// Assignment only; this is not a game-server health or match-start acknowledgement.
+	UPROPERTY(BlueprintReadOnly, Category = "Lobby")
+	bool bHasGameServer = false;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Lobby")
+	bool bIsReturningToLobby = false;
+};
+
+USTRUCT(BlueprintType)
 struct FP48LobbyPlayerEntry
 {
 	GENERATED_BODY()
 
 	UPROPERTY(BlueprintReadOnly, Category = "Lobby")
 	TObjectPtr<AP48PlayerState> PlayerState = nullptr;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Lobby")
+	int32 RoomId = INDEX_NONE;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Lobby")
 	FString PlayerName;
@@ -22,6 +53,9 @@ struct FP48LobbyPlayerEntry
 
 	UPROPERTY(BlueprintReadOnly, Category = "Lobby")
 	bool bIsReady = false;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Lobby")
+	bool bTravelRequested = false;
 };
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FP48LobbyStateChanged);
@@ -39,7 +73,16 @@ public:
 	TArray<FP48LobbyPlayerEntry> GetLobbyPlayers() const;
 
 	UFUNCTION(BlueprintPure, Category = "Lobby")
+	TArray<FP48LobbyPlayerEntry> GetLobbyPlayersForRoom(int32 RoomId) const;
+
+	UFUNCTION(BlueprintPure, Category = "Lobby")
+	TArray<FP48LobbyRoomInfo> GetLobbyRooms() const;
+
+	UFUNCTION(BlueprintPure, Category = "Lobby")
 	FText GetLobbyPlayerListText() const;
+
+	UFUNCTION(BlueprintPure, Category = "Lobby")
+	FText GetLobbyPlayerListTextForRoom(int32 RoomId) const;
 
 	UFUNCTION(BlueprintPure, Category = "Lobby")
 	AP48PlayerState* GetHostPlayerState() const;
@@ -50,21 +93,31 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Lobby")
 	bool CanHostStartGame() const;
 
+	UFUNCTION(BlueprintPure, Category = "Lobby")
+	bool CanPlayerStartGame(const APlayerState* PlayerState) const;
+
+	UFUNCTION(BlueprintPure, Category = "Lobby")
+	bool IsLobbyOpen() const;
+
+	UFUNCTION(BlueprintPure, Category = "Lobby")
+	bool IsRoomReturningToLobby(int32 RoomId) const;
+
+	UFUNCTION(BlueprintPure, Category = "Lobby")
+	FText GetRoomStatusText(int32 RoomId) const;
+
 	UPROPERTY(BlueprintAssignable, Category = "Lobby")
 	FP48LobbyStateChanged OnLobbyStateChanged;
 
-	void RebuildLobbyState(AP48PlayerState* NewHostPlayerState);
+	void RebuildLobbyState(const TArray<FP48LobbyPlayerEntry>& NewLobbyPlayers,
+		const TArray<FP48LobbyRoomInfo>& NewLobbyRooms);
 
 private:
 	UFUNCTION()
 	void OnRep_LobbyState();
 
 	UPROPERTY(ReplicatedUsing = OnRep_LobbyState)
-	TObjectPtr<AP48PlayerState> HostPlayerState = nullptr;
-
-	UPROPERTY(ReplicatedUsing = OnRep_LobbyState)
 	TArray<FP48LobbyPlayerEntry> LobbyPlayers;
 
 	UPROPERTY(ReplicatedUsing = OnRep_LobbyState)
-	bool bCanHostStartGame = false;
+	TArray<FP48LobbyRoomInfo> LobbyRooms;
 };

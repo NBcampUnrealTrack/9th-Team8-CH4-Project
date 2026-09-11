@@ -74,6 +74,7 @@ private:
 	void ApplySeedToConsumers();
 	void CleanupGraphs();
 	void GenerateGraphs();
+	void PrepareGeneratedSurfacesForNetworking(UPCGComponent* Component) const;
 	void HandleGraphGenerated(UPCGComponent* Component);
 	void HandlePlayerStartReadinessChanged(int32 Revision);
 	void WakePlayerCountWaiters(int32 Revision);

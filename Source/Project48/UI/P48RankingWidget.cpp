@@ -42,20 +42,12 @@ void UP48RankingWidget::UpdateRanking()
 
     if (TextBlock_FirstPlayerName)
     {
-        TextBlock_FirstPlayerName->SetText(
-            FText::FromString(
-                FirstPlayer->GetPlayerName()
-            )
-        );
+        TextBlock_FirstPlayerName->SetText(FText::FromString(FirstPlayer->GetPlayerName()));
     }
 
     if (TextBlock_FirstPlayerWin)
     {
-        TextBlock_FirstPlayerWin->SetText(
-            FText::AsNumber(
-                FirstPlayer->GetRoundWinCount()
-            )
-        );
+        TextBlock_FirstPlayerWin->SetText(FText::AsNumber(FirstPlayer->GetRoundWinCount()));
     }
 
 
@@ -65,20 +57,12 @@ void UP48RankingWidget::UpdateRanking()
 
     if (TextBlock_MyPlayerName)
     {
-        TextBlock_MyPlayerName->SetText(
-            FText::FromString(
-                MyPlayerState->GetPlayerName()
-            )
-        );
+        TextBlock_MyPlayerName->SetText(FText::FromString(MyPlayerState->GetPlayerName()));
     }
 
     if (TextBlock_MyPlayerWin)
     {
-        TextBlock_MyPlayerWin->SetText(
-            FText::AsNumber(
-                MyPlayerState->GetRoundWinCount()
-            )
-        );
+        TextBlock_MyPlayerWin->SetText(FText::AsNumber(MyPlayerState->GetRoundWinCount()));
     }
 }
 
@@ -129,8 +113,7 @@ AP48PlayerState* UP48RankingWidget::FindFirstPlayer() const
 
         if (P48PlayerState->GetRoundWinCount() > HighestWinCount)
         {
-            HighestWinCount =
-                P48PlayerState->GetRoundWinCount();
+            HighestWinCount = P48PlayerState->GetRoundWinCount();
 
             FirstPlayer = P48PlayerState;
         }

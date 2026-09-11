@@ -4,6 +4,7 @@
 #include "Components/ActorComponent.h"
 #include "P48UIManagerComponent.generated.h"
 
+enum class EP48NicknameRegistrationResult : uint8;
 struct FChatMessage;
 class UP48ChatInput;
 class UP48ChatWidget;
@@ -51,10 +52,15 @@ public:
 	void ClearUI();
 	// TODO void ShowLobby();
 	
+	UFUNCTION()
+	void ShowConnectionRejectedMessage(const EP48NicknameRegistrationResult& result);
+	
 	UFUNCTION(Server, Reliable)
-	void Server_CheckNickname(const FString& Nickname);
+	void ServerRegisterNickname(const FString& Nickname);
 	UFUNCTION(Client, Reliable)
-	void Client_NicknameCheckResult(bool bSuccess);
+	void ClientNicknameRegistrationSucceeded(const FString& Nickname);
+	UFUNCTION(Client, Reliable)
+	void ClientNicknameRegistrationFailed(EP48NicknameRegistrationResult Result);
 	
 	/* Chat System */
 public:

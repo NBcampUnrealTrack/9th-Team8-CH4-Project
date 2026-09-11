@@ -12,6 +12,7 @@
 #include "../../../Character/P48PlayerState.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "Components/InstancedStaticMeshComponent.h"
 #include "PCGComponent.h"
 #include "PCGContext.h"
 #include "PCGGraph.h"
@@ -405,12 +406,53 @@ void UP48PCGSeedWorldSubsystem::GenerateGraphs()
 	PendingComponents.Reset();
 }
 
+void UP48PCGSeedWorldSubsystem::PrepareGeneratedSurfacesForNetworking(UPCGComponent* Component) const
+{
+	AActor* Owner = IsValid(Component) ? Component->GetOwner() : nullptr;
+	if (!IsValid(Owner))
+	{
+		return;
+	}
+
+	TInlineComponentArray<UInstancedStaticMeshComponent*> SurfaceComponents;
+	Owner->GetComponents(SurfaceComponents);
+
+	int32 PreparedCount = 0;
+	for (UInstancedStaticMeshComponent* SurfaceComponent : SurfaceComponents)
+	{
+		if (!IsValid(SurfaceComponent)
+			|| SurfaceComponent->GetCollisionEnabled() == ECollisionEnabled::NoCollision
+			|| SurfaceComponent->GetCollisionResponseToChannel(ECC_Pawn) != ECR_Block)
+		{
+			continue;
+		}
+
+		// PCG creates these components at runtime. The shared graph and seed give them
+		// matching paths on server and clients, so register those paths before a
+		// Character can replicate the component as its movement base.
+		SurfaceComponent->SetNetAddressable();
+		++PreparedCount;
+
+		if (SurfaceComponent->Mobility != EComponentMobility::Static)
+		{
+			UE_LOG(LogTemp, Warning,
+				TEXT("[P48PCG] Generated walkable surface is not Static: %s"),
+				*SurfaceComponent->GetPathName());
+		}
+	}
+
+	UE_LOG(LogTemp, Display,
+		TEXT("[P48PCG] Prepared %d generated walkable surface component(s) for networking. Owner=%s Revision=%d"),
+		PreparedCount, *Owner->GetPathName(), Snapshot.Revision);
+}
+
 void UP48PCGSeedWorldSubsystem::HandleGraphGenerated(UPCGComponent* Component)
 {
 	if (!bGenerationRunning || !IsValid(Component) || !Consumers.Contains(Component))
 	{
 		return;
 	}
+	PrepareGeneratedSurfacesForNetworking(Component);
 	CompletedConsumers.Add(Component);
 	if (!AreServerGraphsComplete())
 	{
