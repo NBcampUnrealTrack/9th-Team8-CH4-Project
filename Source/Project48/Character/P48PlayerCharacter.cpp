@@ -701,7 +701,7 @@ void AP48PlayerCharacter::OnStunTagChanged(const struct FGameplayTag CallbackTag
 				if (PS->GetStunCount() >= MaxStunCount)
 				{
 					UE_LOG(LogTemp, Error, TEXT("[%s] 사망"), *GetName());
-					PS->OnDeath();
+					Death();
 					return;
 				}
 			}
@@ -865,6 +865,7 @@ void AP48PlayerCharacter::OnRep_Weapon()
 
 void AP48PlayerCharacter::SetInputBlocked(bool bBlocked)
 {
+	bInputBlocked = bBlocked;
 	if (bBlocked)
 	{
 		StopRun();
@@ -873,6 +874,11 @@ void AP48PlayerCharacter::SetInputBlocked(bool bBlocked)
 
 void AP48PlayerCharacter::Death()
 {
+	if (!HasAuthority())
+	{
+		return;
+	}
+	
 	AP48PlayerState* PS = GetPlayerState<AP48PlayerState>();
 	
 	if (!PS)
