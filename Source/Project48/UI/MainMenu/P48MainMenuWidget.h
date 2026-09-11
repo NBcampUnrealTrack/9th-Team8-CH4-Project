@@ -18,8 +18,8 @@ protected:
 	TObjectPtr<UButton> Button_GameStart;
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UButton> Button_GameQuit;
-	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UButton> Button_Settings;
+	/*UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UButton> Button_Settings;*/
 
 private:
 	UFUNCTION()
