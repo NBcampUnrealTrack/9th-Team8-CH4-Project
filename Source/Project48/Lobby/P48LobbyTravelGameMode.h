@@ -14,6 +14,9 @@ public:
 		const FString& MapName,
 		const FString& Options,
 		FString& ErrorMessage) override;
+	virtual FString InitNewPlayer(APlayerController* NewPlayerController,
+		const FUniqueNetIdRepl& UniqueId, const FString& Options,
+		const FString& Portal = TEXT("")) override;
 	virtual void OnPostLogin(AController* NewPlayer) override;
 
 private:
