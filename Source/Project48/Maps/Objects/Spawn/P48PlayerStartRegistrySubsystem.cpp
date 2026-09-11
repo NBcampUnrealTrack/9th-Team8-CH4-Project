@@ -173,6 +173,42 @@ int32 UP48PlayerStartRegistrySubsystem::GetRegisteredCount(const int32 Revision)
 	return UniqueSlots.Num();
 }
 
+bool UP48PlayerStartRegistrySubsystem::GetReadyPlayerStarts(
+	const int32 Revision,
+	TArray<AP48PlayerStart*>& OutPlayerStarts) const
+{
+	OutPlayerStarts.Reset();
+	if (Revision <= 0 || Revision != ActiveRevision || LayoutState != EP48PlayerStartLayoutState::Ready)
+	{
+		return false;
+	}
+
+	for (const TWeakObjectPtr<AP48PlayerStart>& WeakStart : RegisteredPlayerStarts)
+	{
+		AP48PlayerStart* PlayerStart = WeakStart.Get();
+		if (IsValid(PlayerStart)
+			&& PlayerStart->GetWorld() == GetWorld()
+			&& PlayerStart->GenerationId == ActiveRevision
+			&& PlayerStart->SpawnSlotIndex != INDEX_NONE)
+		{
+			OutPlayerStarts.Add(PlayerStart);
+		}
+	}
+
+	OutPlayerStarts.Sort([](const AP48PlayerStart& Left, const AP48PlayerStart& Right)
+	{
+		return Left.SpawnSlotIndex < Right.SpawnSlotIndex;
+	});
+
+	if (OutPlayerStarts.Num() < RequiredCount)
+	{
+		OutPlayerStarts.Reset();
+		return false;
+	}
+
+	return true;
+}
+
 void UP48PlayerStartRegistrySubsystem::EvaluateReadiness()
 {
 	PruneInvalidStarts();

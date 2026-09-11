@@ -47,6 +47,8 @@ public:
 
 	EP48PlayerStartLayoutState GetState(int32 Revision) const;
 	int32 GetRegisteredCount(int32 Revision) const;
+	/** 현재 세대에서 준비가 끝난 PlayerStart를 SpawnSlotIndex 순으로 반환합니다. */
+	bool GetReadyPlayerStarts(int32 Revision, TArray<AP48PlayerStart*>& OutPlayerStarts) const;
 
 	FOnReadinessChanged OnReadinessChanged;
 
