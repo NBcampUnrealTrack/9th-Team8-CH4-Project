@@ -1,6 +1,7 @@
 ﻿#include "P48PlayerController.h"
 
 #include "P48PlayerState.h"
+#include "P48PlayerCharacter.h"
 
 #include "EnhancedInputSubsystems.h"
 #include "InputMappingContext.h"
@@ -33,15 +34,6 @@ void AP48PlayerController::BeginPlay()
 	{
 		return;
 	}
-	
-	/*WidgetInstance = CreateWidget<UUserWidget>(this, WidgetClass);
-	if (WidgetInstance)
-	{
-		WidgetInstance->AddToViewport();
-		
-		bShowMouseCursor = true;
-		SetInputMode(FInputModeUIOnly());
-	}*/
 }
 
 void AP48PlayerController::RequestReady()
@@ -101,4 +93,17 @@ void AP48PlayerController::Server_ReportMapGenerationComplete_Implementation(con
 		It->NotifyClientGenerationComplete(this, GenerationId);
 		break;
 	}
+}
+
+void AP48PlayerController::Client_SetPlayInputBlocked_Implementation(bool bBlocked)
+{
+	SetIgnoreLookInput(bBlocked);
+	SetIgnoreMoveInput(bBlocked);
+	
+	if (AP48PlayerCharacter* PlayerCharacter = GetPawn<AP48PlayerCharacter>())
+	{
+		PlayerCharacter->SetInputBlocked(bBlocked);
+	}
+	
+	UE_LOG(LogTemp, Warning, TEXT("[Client] Input Blocked State Changed: %s"), bBlocked ? TEXT("BLOCKED") : TEXT("UNBLOCKED"));
 }

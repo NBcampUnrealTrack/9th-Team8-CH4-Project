@@ -27,11 +27,11 @@ class PROJECT48_API AP48PlayerCharacter : public ACharacter, public IAbilitySyst
 public:
 	AP48PlayerCharacter();
 	
+	virtual void Destroyed() override;
+	
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 protected:
 	virtual void BeginPlay() override;
-	
-	//GAS
 	virtual void PossessedBy(AController* NewController) override;
 	virtual void OnRep_PlayerState() override;
 	
@@ -100,7 +100,11 @@ protected:
 	
 	UFUNCTION()
 	void OnRep_Weapon();
-	
+
+	//Input Block
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Input")
+	bool bInputBlocked = false;
+
 public:	
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 	
@@ -113,6 +117,14 @@ public:
 	
 	UFUNCTION(BlueprintCallable, Category="Attack|Attack")
 	void StopPunchAttack();
+	
+	//Input Block
+	void SetInputBlocked(bool bBlocked);
+	FORCEINLINE bool IsInputBlocked() const { return bInputBlocked;}
+	
+	//Death
+	UFUNCTION(BlueprintCallable, Category="Death|Death")
+	void Death();
 	
 private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components|Camera", meta=(AllowPrivateAccess="true"))
@@ -196,6 +208,9 @@ private:
 	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_PlayPunchMontage();
 	
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_DeathRagDoll();
+	
 	//attack/hit
 	UPROPERTY()
 	TSet<TWeakObjectPtr<AActor>> HitActorThisPunch;
@@ -210,6 +225,7 @@ private:
 	
 	//weapon
 	void EquipWeaponHandle();
+	
 public:
 	virtual void Jump() override;
 	virtual void OnJumped_Implementation() override;
