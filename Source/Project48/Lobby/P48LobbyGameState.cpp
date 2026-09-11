@@ -8,9 +8,8 @@ void AP48LobbyGameState::GetLifetimeReplicatedProps(
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
-	DOREPLIFETIME(AP48LobbyGameState, HostPlayerState);
 	DOREPLIFETIME(AP48LobbyGameState, LobbyPlayers);
-	DOREPLIFETIME(AP48LobbyGameState, bCanHostStartGame);
+	DOREPLIFETIME(AP48LobbyGameState, LobbyRooms);
 }
 
 TArray<FP48LobbyPlayerEntry> AP48LobbyGameState::GetLobbyPlayers() const
@@ -18,16 +17,43 @@ TArray<FP48LobbyPlayerEntry> AP48LobbyGameState::GetLobbyPlayers() const
 	return LobbyPlayers;
 }
 
+TArray<FP48LobbyPlayerEntry> AP48LobbyGameState::GetLobbyPlayersForRoom(int32 RoomId) const
+{
+	return LobbyPlayers.FilterByPredicate([RoomId](const FP48LobbyPlayerEntry& Entry)
+	{
+		return Entry.RoomId == RoomId;
+	});
+}
+
+TArray<FP48LobbyRoomInfo> AP48LobbyGameState::GetLobbyRooms() const
+{
+	return LobbyRooms;
+}
+
 FText AP48LobbyGameState::GetLobbyPlayerListText() const
+{
+	return GetLobbyPlayerListTextForRoom(
+		LobbyPlayers.IsEmpty() ? INDEX_NONE : LobbyPlayers[0].RoomId);
+}
+
+FText AP48LobbyGameState::GetLobbyPlayerListTextForRoom(int32 RoomId) const
 {
 	TArray<FString> PlayerLines;
 	PlayerLines.Reserve(LobbyPlayers.Num());
 
 	for (const FP48LobbyPlayerEntry& Entry : LobbyPlayers)
 	{
+		if (Entry.RoomId != RoomId)
+		{
+			continue;
+		}
 		const TCHAR* StateText = Entry.bIsHost
 			? TEXT("Host")
 			: (Entry.bIsReady ? TEXT("Ready") : TEXT("Not Ready"));
+		if (Entry.bTravelRequested)
+		{
+			StateText = Entry.bIsHost ? TEXT("Host / Travel Requested") : TEXT("Travel Requested");
+		}
 
 		PlayerLines.Add(FString::Printf(
 			TEXT("%s  [%s]"),
@@ -40,57 +66,106 @@ FText AP48LobbyGameState::GetLobbyPlayerListText() const
 
 AP48PlayerState* AP48LobbyGameState::GetHostPlayerState() const
 {
-	return HostPlayerState;
+	for (const FP48LobbyPlayerEntry& Entry : LobbyPlayers)
+	{
+		if (Entry.bIsHost)
+		{
+			return Entry.PlayerState;
+		}
+	}
+	return nullptr;
 }
 
 bool AP48LobbyGameState::IsHost(const APlayerState* PlayerState) const
 {
-	return IsValid(PlayerState) && PlayerState == HostPlayerState;
+	return IsValid(PlayerState) && LobbyPlayers.ContainsByPredicate(
+		[PlayerState](const FP48LobbyPlayerEntry& Entry)
+		{
+			return Entry.PlayerState == PlayerState && Entry.bIsHost;
+		});
 }
 
 bool AP48LobbyGameState::CanHostStartGame() const
 {
-	return bCanHostStartGame;
+	for (const FP48LobbyPlayerEntry& Entry : LobbyPlayers)
+	{
+		if (Entry.bIsHost)
+		{
+			return CanPlayerStartGame(Entry.PlayerState);
+		}
+	}
+	return false;
 }
 
-void AP48LobbyGameState::RebuildLobbyState(AP48PlayerState* NewHostPlayerState)
+bool AP48LobbyGameState::CanPlayerStartGame(const APlayerState* PlayerState) const
 {
-	if (HasAuthority() == false)
+	// Preserved records intentionally have no lobby PlayerState after disconnect.
+	if (!IsValid(PlayerState)) return false;
+	const FP48LobbyPlayerEntry* HostEntry = LobbyPlayers.FindByPredicate(
+		[PlayerState](const FP48LobbyPlayerEntry& Entry)
+		{
+			return Entry.PlayerState == PlayerState && Entry.bIsHost && !Entry.bTravelRequested;
+		});
+	if (!HostEntry)
 	{
-		return;
+		return false;
 	}
-
-	HostPlayerState = NewHostPlayerState;
-	LobbyPlayers.Reset();
 
 	int32 GuestCount = 0;
-	bool bAllGuestsReady = true;
-
-	for (APlayerState* PlayerState : PlayerArray)
+	for (const FP48LobbyPlayerEntry& Entry : LobbyPlayers)
 	{
-		AP48PlayerState* P48PlayerState = Cast<AP48PlayerState>(PlayerState);
-		if (IsValid(P48PlayerState) == false)
-		{
-			continue;
-		}
-
-		FP48LobbyPlayerEntry& Entry = LobbyPlayers.AddDefaulted_GetRef();
-		Entry.PlayerState = P48PlayerState;
-		Entry.PlayerName = P48PlayerState->GetPlayerName();
-		Entry.bIsHost = P48PlayerState == HostPlayerState;
-		Entry.bIsReady = Entry.bIsHost == false && P48PlayerState->IsReady();
-
-		if (Entry.bIsHost == false)
+		if (Entry.RoomId == HostEntry->RoomId && !Entry.bIsHost)
 		{
 			++GuestCount;
-			bAllGuestsReady &= Entry.bIsReady;
+			if (!Entry.bIsReady)
+			{
+				return false;
+			}
 		}
 	}
+	return GuestCount > 0;
+}
 
-	bCanHostStartGame = IsValid(HostPlayerState)
-		&& GuestCount > 0
-		&& bAllGuestsReady;
+bool AP48LobbyGameState::IsLobbyOpen() const
+{
+	return !LobbyRooms.IsEmpty();
+}
 
+bool AP48LobbyGameState::IsRoomReturningToLobby(int32 RoomId) const
+{
+	const FP48LobbyRoomInfo* Room = LobbyRooms.FindByPredicate(
+		[RoomId](const FP48LobbyRoomInfo& Candidate)
+		{
+			return Candidate.RoomId == RoomId;
+		});
+	return Room && Room->bIsReturningToLobby;
+}
+
+FText AP48LobbyGameState::GetRoomStatusText(int32 RoomId) const
+{
+	const FP48LobbyRoomInfo* Room = LobbyRooms.FindByPredicate(
+		[RoomId](const FP48LobbyRoomInfo& Candidate)
+		{
+			return Candidate.RoomId == RoomId;
+		});
+	if (!Room) return FText::GetEmpty();
+	if (Room->bIsReturningToLobby)
+	{
+		return FText::FromString(TEXT("Waiting for the game players to return"));
+	}
+	return Room->bHasGameServer
+		? FText::FromString(TEXT("Game in progress"))
+		: FText::FromString(TEXT("Waiting for players"));
+}
+
+void AP48LobbyGameState::RebuildLobbyState(
+	const TArray<FP48LobbyPlayerEntry>& NewLobbyPlayers,
+	const TArray<FP48LobbyRoomInfo>& NewLobbyRooms)
+{
+	if (!HasAuthority()) return;
+	LobbyPlayers = NewLobbyPlayers;
+	LobbyRooms = NewLobbyRooms;
+	ForceNetUpdate();
 	OnLobbyStateChanged.Broadcast();
 }
 
