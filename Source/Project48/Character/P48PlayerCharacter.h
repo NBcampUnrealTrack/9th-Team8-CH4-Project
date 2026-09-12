@@ -120,11 +120,14 @@ public:
 	
 	//Input Block
 	void SetInputBlocked(bool bBlocked);
-	FORCEINLINE bool IsInputBlocked() const { return bInputBlocked;}
+	FORCEINLINE bool IsInputBlocked() const { return bInputBlocked; }
 	
 	//Death
 	UFUNCTION(BlueprintCallable, Category="Death|Death")
 	void Death();
+	
+	//Weapon
+	FORCEINLINE class AP48WeaponBase* GetEquippedWeapon() const { return Weapon; }
 	
 private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components|Camera", meta=(AllowPrivateAccess="true"))
