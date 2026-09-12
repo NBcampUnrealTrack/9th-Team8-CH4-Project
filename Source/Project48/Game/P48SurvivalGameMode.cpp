@@ -4,6 +4,8 @@
 
 #include "P48GameStateBase.h"
 #include "Project48/Character/P48PlayerState.h"
+#include "GameFramework/PlayerController.h"
+#include "GameFramework/Pawn.h"
 #include "Rule/P48BestOfRoundsMatchFlowRule.h"
 #include "Rule/P48LastPlayerStandingCondition.h"
 #include "TimerManager.h"
@@ -87,6 +89,22 @@ void AP48SurvivalGameMode::NotifyPlayerEliminated(AP48PlayerState* EliminatedPla
 	}
 
 	EliminatedPlayer->SetAlive(false);
+	if (APlayerController* PC = Cast<APlayerController>(EliminatedPlayer->GetOwner()))
+	{
+		SetPlayerInputBlocked(PC, true);
+		const TWeakObjectPtr<APawn> DeadPawn = PC->GetPawn();
+		FTimerHandle DeathTimer;
+		GetWorldTimerManager().SetTimer(DeathTimer, FTimerDelegate::CreateWeakLambda(this, [DeadPawn]()
+		{
+			// 새 Pawn이 아닌 사망 당시 Pawn만 제거한다.
+			if (APawn* Pawn = DeadPawn.Get())
+			{
+				if (AController* Controller = Pawn->GetController()) { Controller->UnPossess(); }
+				Pawn->Destroy();
+				// TODO(플레이어): 관전 진입 API 전달 후 연결.
+			}
+		}), 3.0f, false);
+	}
 	UE_LOG(LogTemp, Warning, TEXT("[Server] Player eliminated: %s, Alive participants: %d"),
 		*EliminatedPlayer->GetPlayerName(), EvaluateRound().AliveCount);
 
@@ -309,6 +327,7 @@ void AP48SurvivalGameMode::FinishMatch(AP48PlayerState* Winner)
 		MatchFlowRule->Reset();
 	}
 	GS->SetMatchPhase(EP48MatchPhase::MatchEnd);
+	SetRoundInputBlocked(true);
 	GS->ForceNetUpdate();
 	GetWorldTimerManager().SetTimer(
 		ReturnLobbyTimerHandle, this, &ThisClass::RequestLobbyReturn,
