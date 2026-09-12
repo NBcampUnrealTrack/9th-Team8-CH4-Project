@@ -10,6 +10,8 @@
 
 #include "P48GameStateBase.h"
 #include "../Character/P48PlayerState.h"
+#include "../Character/P48PlayerController.h"
+#include "../Character/P48PlayerCharacter.h"
 #include "../Maps/Objects/Spawn/P48PlayerStart.h"
 #include "../Maps/Objects/Spawn/P48PlayerStartRegistrySubsystem.h"
 #include "../Maps/PCG/Common/P48PCGSeedState.h"
@@ -192,6 +194,7 @@ void AP48GameModeBase::OnPostLogin(AController* NewPlayer)
 
 void AP48GameModeBase::Logout(AController* Exit)
 {
+	InputBlockedControllers.Remove(Cast<APlayerController>(Exit));
 	PlayersWaitingForMap.Remove(Cast<APlayerController>(Exit));
     const FString ExitingPlayerName = GetNameSafe(Exit);
     const int32 RemainingPlayerCount = FMath::Max(0, GetNumPlayers() - 1);
@@ -422,6 +425,7 @@ void AP48GameModeBase::StartCountdown()
 		return;
 	}
 	
+	SetRoundInputBlocked(true);
 	P48GameState->SetMatchPhase(EP48MatchPhase::Countdown);
 	
 	UE_LOG(LogTemp,Warning,TEXT("[Server] Countdown started: %.1f sec"),CountdownDuration);
@@ -448,6 +452,7 @@ void AP48GameModeBase::StartMatch()
 	}
 	
 	P48GameState->SetMatchPhase(EP48MatchPhase::Playing);
+	SetRoundInputBlocked(false);
 	
 	UE_LOG(LogTemp,Warning,TEXT("[Server] Round %d started"),P48GameState->CurrentRound);
 	
@@ -471,6 +476,7 @@ void AP48GameModeBase::StartRoundEnd()
 		return;
 	}
 	
+	SetRoundInputBlocked(true);
 	P48GameState->SetMatchPhase(EP48MatchPhase::RoundEnd);
 	
 	UE_LOG(LogTemp,Warning,TEXT("[Server] Round %d ended"),P48GameState->CurrentRound);
@@ -512,6 +518,21 @@ void AP48GameModeBase::PrepareNextRound()
 	bWaitingForRoundMap = true;
 	GetWorldTimerManager().ClearTimer(RoundEndTimerHandle);
 	PlayersWaitingForMap.Reset();
+	// 생존자(결정전 비참가자 포함)는 지형 제거 전에 정리한다.
+	// 탈락 Pawn은 사망 시 예약한 3초 삭제를 유지한다.
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		APlayerController* PC = It->Get();
+		const AP48PlayerState* Player = PC ? PC->GetPlayerState<AP48PlayerState>() : nullptr;
+		if (Player && Player->IsAlive())
+		{
+			if (APawn* Pawn = PC->GetPawn())
+			{
+				PC->UnPossess();
+				Pawn->Destroy();
+			}
+		}
+	}
 
 	int32 ParticipantCount = 0;
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
@@ -553,6 +574,30 @@ bool AP48GameModeBase::IsRoundSpawnParticipant(const AP48PlayerState* Player) co
 	return IsValid(Player) && Player->IsMatchParticipant();
 }
 
+void AP48GameModeBase::SetPlayerInputBlocked(APlayerController* PlayerController, bool bBlocked)
+{
+	AP48PlayerController* PC = Cast<AP48PlayerController>(PlayerController);
+	if (!PC) { return; }
+	if (AP48PlayerCharacter* Character = PC->GetPawn<AP48PlayerCharacter>())
+	{
+		Character->SetInputBlocked(bBlocked);
+	}
+	if (InputBlockedControllers.Contains(PC) == bBlocked) { return; }
+	if (bBlocked) { InputBlockedControllers.Add(PC); }
+	else { InputBlockedControllers.Remove(PC); }
+	PC->Client_SetPlayInputBlocked(bBlocked);
+}
+
+void AP48GameModeBase::SetRoundInputBlocked(bool bBlocked)
+{
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		APlayerController* PC = It->Get();
+		const AP48PlayerState* Player = PC ? PC->GetPlayerState<AP48PlayerState>() : nullptr;
+		SetPlayerInputBlocked(PC, bBlocked || !IsRoundSpawnParticipant(Player) || !Player->IsAlive());
+	}
+}
+
 bool AP48GameModeBase::RespawnRoundParticipants(
 	const TArray<APlayerController*>& Participants,
 	const int32 GenerationId)
@@ -574,7 +619,7 @@ bool AP48GameModeBase::RespawnRoundParticipants(
 		return false;
 	}
 
-	// Pawn을 제거하기 전에 모든 Controller, PlayerStart와 Pawn Class를 먼저 검증한다.
+	// 스폰 입력과 사망 Pawn의 지연 삭제 완료 여부를 확인한다.
 	for (int32 Index = 0; Index < Participants.Num(); ++Index)
 	{
 		APlayerController* PlayerController = Participants[Index];
@@ -585,6 +630,10 @@ bool AP48GameModeBase::RespawnRoundParticipants(
 			UE_LOG(LogTemp, Error, TEXT("[RoundSpawn] Invalid respawn input at index %d."), Index);
 			return false;
 		}
+		if (PlayerController->GetPawn() && !PlayerController->GetPlayerState<AP48PlayerState>()->IsAlive())
+		{
+			return false;
+		}
 	}
 
 	for (int32 Index = 0; Index < Participants.Num(); ++Index)
@@ -592,11 +641,8 @@ bool AP48GameModeBase::RespawnRoundParticipants(
 		APlayerController* PlayerController = Participants[Index];
 		AP48PlayerStart* PlayerStart = PlayerStarts[Index];
 
-		if (APawn* OldPawn = PlayerController->GetPawn())
-		{
-			PlayerController->UnPossess();
-			OldPawn->Destroy();
-		}
+		// 이전 시도에서 재생성에 성공한 참가자는 유지한다.
+		if (PlayerController->GetPawn()) { continue; }
 
 		RestartPlayerAtPlayerStart(PlayerController, PlayerStart);
 		if (!IsValid(PlayerController->GetPawn()))
@@ -607,6 +653,8 @@ bool AP48GameModeBase::RespawnRoundParticipants(
 			return false;
 		}
 
+		SetPlayerInputBlocked(PlayerController, true);
+		// TODO(플레이어): PC의 차단 상태가 클라이언트의 새 Pawn에도 적용되도록 연결 필요.
 		UE_LOG(LogTemp, Display,
 			TEXT("[RoundSpawn] Respawned %s at slot %d. Generation=%d"),
 			*GetNameSafe(PlayerController), PlayerStart->SpawnSlotIndex, GenerationId);
@@ -650,16 +698,26 @@ void AP48GameModeBase::TryFinishRoundMapPreparation()
 		return;
 	}
 
-	if (P48MapReadiness::RequiresNetworkSeed(GetWorld())
-		&& !RespawnRoundParticipants(Participants, SeedState->State.Revision))
+	if (P48MapReadiness::RequiresNetworkSeed(GetWorld()))
 	{
-		return;
+		if (!RespawnRoundParticipants(Participants, SeedState->State.Revision)) { return; }
+	}
+	else
+	{
+		// PCG가 없는 테스트 맵도 Pawn 정리 후 기본 PlayerStart에서 재생성한다.
+		for (APlayerController* PC : Participants)
+		{
+			if (PC->GetPawn() && !PC->GetPlayerState<AP48PlayerState>()->IsAlive()) { return; }
+			if (!PC->GetPawn()) { RestartPlayer(PC); }
+			if (!PC->GetPawn()) { return; }
+			SetPlayerInputBlocked(PC, true);
+		}
 	}
 
 	bWaitingForRoundMap = false;
 	GetWorldTimerManager().ClearTimer(RoundMapPreparationTimerHandle);
 	UE_LOG(LogTemp, Display, TEXT("[RoundMap] Ready and players respawned. Participants=%d"), Participants.Num());
-	// TODO: 플레이어 담당의 클라이언트 Pawn 준비 완료 응답과 연결한 뒤 카운트다운을 시작한다.
+	// 서버 재생성 완료 기준. 클라이언트의 새 Pawn 차단 유지 처리는 플레이어 담당과 연동한다.
 	StartCountdown();
 }
 
