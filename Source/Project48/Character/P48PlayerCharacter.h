@@ -56,9 +56,6 @@ protected:
 	UFUNCTION(BlueprintCallable, Category="Attack|Attack")
 	void OnRightHandOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
 	
-	UFUNCTION(BlueprintCallable, Category="Attack|Hit")
-	void OnHit(const FVector& HitLocation, const FVector& HitDirection, float ImpulseStrength);
-	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Attack|GAS")
 	TSubclassOf<class UGameplayEffect> GroggyEffectClass;
 	
@@ -118,13 +115,19 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Attack|Attack")
 	void StopPunchAttack();
 	
+	UFUNCTION(BlueprintCallable, Category="Attack|Hit")
+	void OnHit(const FVector& HitLocation, const FVector& HitDirection, float ImpulseStrength);
+	
 	//Input Block
 	void SetInputBlocked(bool bBlocked);
-	FORCEINLINE bool IsInputBlocked() const { return bInputBlocked;}
+	FORCEINLINE bool IsInputBlocked() const { return bInputBlocked; }
 	
 	//Death
 	UFUNCTION(BlueprintCallable, Category="Death|Death")
 	void Death();
+	
+	//Weapon
+	FORCEINLINE class AP48WeaponBase* GetEquippedWeapon() const { return Weapon; }
 	
 private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components|Camera", meta=(AllowPrivateAccess="true"))
@@ -207,6 +210,9 @@ private:
 	
 	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_PlayPunchMontage();
+	
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_PlayWeaponMontage();
 	
 	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_DeathRagDoll();

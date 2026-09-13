@@ -384,8 +384,6 @@ void AP48PlayerCharacter::Attack()
 	{
 		PlayAnimMontage(MontageToPlay);
 	}
-	
-	
 }
 
 void AP48PlayerCharacter::AttackHandle()
@@ -398,13 +396,16 @@ void AP48PlayerCharacter::AttackHandle()
 	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
 	if (AnimInstance)
 	{
-		if (AnimInstance->Montage_IsPlaying(PunchAttackMontage) || AnimInstance->Montage_IsPlaying(WeaponAttackMontage))
+		UAnimMontage* CurrentMontage = bEquipWeapon ? WeaponAttackMontage : PunchAttackMontage;
+		
+		if (CurrentMontage && AnimInstance->Montage_IsPlaying(CurrentMontage))
 		{
 			return;
 		}
+		
 		Attack();
 	}
-	
+
 	Server_Attack();
 }
 
@@ -537,14 +538,41 @@ void AP48PlayerCharacter::Multicast_OnHit_Implementation(const FVector& HitLocat
 
 void AP48PlayerCharacter::Server_Attack_Implementation()
 {
-	Multicast_PlayPunchMontage();
+	if (bEquipWeapon)
+	{
+		if (Weapon)
+		{
+			Weapon->ResetAttackState();
+		}
+		Multicast_PlayWeaponMontage();
+	}
+	else
+	{
+		Multicast_PlayPunchMontage();
+	}
 }
 
 void AP48PlayerCharacter::Multicast_PlayPunchMontage_Implementation()
 {
+	if (IsLocallyControlled())
+	{
+		return;
+	}
 	if (PunchAttackMontage)
 	{
 		PlayAnimMontage(PunchAttackMontage);
+	}
+}
+
+void AP48PlayerCharacter::Multicast_PlayWeaponMontage_Implementation()
+{
+	if (IsLocallyControlled())
+	{
+		return;
+	}
+	if (WeaponAttackMontage)
+	{
+		PlayAnimMontage(WeaponAttackMontage);
 	}
 }
 
@@ -815,6 +843,7 @@ void AP48PlayerCharacter::Server_EquipWeapon_Implementation(AP48WeaponBase* NewW
 	UE_LOG(LogTemp, Warning, TEXT("Server_EquipWeapon"));
 	
 	Weapon = NewWeapon;
+	Weapon->SetOwner(this);
 	
 	OnRep_Weapon();
 	
@@ -830,6 +859,11 @@ void AP48PlayerCharacter::OnRep_Weapon()
 {
 	if (Weapon)
 	{
+		bEquipWeapon = true;
+		Weapon->SetOwner(this);
+		
+		WeaponAttackMontage = Weapon->GetWeaponData().SwingAnim.LoadSynchronous();
+		
 		UStaticMeshComponent* WeaponMesh = Weapon->FindComponentByClass<UStaticMeshComponent>();
 		if (!WeaponMesh)
 		{
@@ -859,6 +893,9 @@ void AP48PlayerCharacter::OnRep_Weapon()
 	}
 	else
 	{
+		bEquipWeapon = false;
+		
+		WeaponAttackMontage = nullptr;
 		//TODO: 나중에 무기 버릴 때 
 	}
 }

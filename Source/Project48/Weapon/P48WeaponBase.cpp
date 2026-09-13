@@ -1,5 +1,7 @@
 #include "P48WeaponBase.h"
 
+#include "Project48/Character/P48PlayerCharacter.h"
+
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/CollisionProfile.h"
@@ -180,7 +182,7 @@ void AP48WeaponBase::StartAttackDetection()
 		return;
 	}
 	
-	HitActorsThisAttack.Reset();
+	//HitActorsThisAttack.Reset();
 	bIsAttackDetectionActive = true;
 	
 	AttackCollisionComponent->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
@@ -330,6 +332,11 @@ void AP48WeaponBase::HandleWeaponHit(AActor* HitActor)
 	// 대상 ASC에 그로기 GE 적용
 	TargetASC->ApplyGameplayEffectSpecToSelf(*EffectSpecHandle.Data.Get());
 	
+	if (AP48PlayerCharacter* TargetCharacter = Cast<AP48PlayerCharacter>(HitActor))
+	{
+		TargetCharacter->OnHit(TargetCharacter->GetActorLocation(), KnockbackDirection, KnockbackPower);
+	}
+	
 	UE_LOG(
 		LogP48Weapon,
 		Log,
@@ -353,4 +360,12 @@ FVector AP48WeaponBase::CalculateKnockbackDirection(const AActor* HitActor) cons
 	FVector KnockbackDirection = HitActor->GetActorLocation() - KnockbackSource->GetActorLocation();
 	
 	return KnockbackDirection.GetSafeNormal2D();
+}
+
+void AP48WeaponBase::ResetAttackState()
+{
+	if (HasAuthority())
+	{
+		HitActorsThisAttack.Reset();
+	}
 }

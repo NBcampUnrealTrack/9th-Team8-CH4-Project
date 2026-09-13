@@ -34,6 +34,8 @@ public:
 	
 	UFUNCTION(BlueprintCallable, Category = "Weapon|Attack")
 	void StopAttackDetection();
+	
+	void ResetAttackState();
 
 protected:
 	virtual void BeginPlay() override;

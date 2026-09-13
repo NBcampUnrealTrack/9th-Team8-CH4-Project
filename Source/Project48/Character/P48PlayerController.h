@@ -14,6 +14,7 @@ class PROJECT48_API AP48PlayerController : public APlayerController
 	
 protected:
 	virtual void BeginPlay() override;
+	virtual void AcknowledgePossession(APawn* P) override;
 	
 	UFUNCTION(Server, Reliable, WithValidation)
 	void Server_SetReady(bool bNewReady);
@@ -21,6 +22,9 @@ protected:
 private:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Input", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UInputMappingContext> DefaultMappingContext;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Input", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UInputMappingContext> SpectatorIMC;
 	
 public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Test|UI")

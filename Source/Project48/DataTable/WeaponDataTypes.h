@@ -65,6 +65,9 @@ public:
 		)
 	FRotator RelativeRotator = FRotator::ZeroRotator;
 	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon|Anim")
+	TSoftObjectPtr<UAnimMontage> SwingAnim;
+	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon|Audio")
 	TSoftObjectPtr<USoundBase> SwingSound;
 	
