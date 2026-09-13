@@ -2,6 +2,7 @@
 
 #include "P48PlayerState.h"
 #include "P48PlayerCharacter.h"
+#include "Project48/Character/Spectator/P48SpectatorPawn.h"
 
 #include "EnhancedInputSubsystems.h"
 #include "InputMappingContext.h"
@@ -19,20 +20,44 @@ void AP48PlayerController::BeginPlay()
 		return;
 	}
 	
-	if (ULocalPlayer* LocalPlayer = GetLocalPlayer())
-	{
-		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(LocalPlayer))
-		{
-			if (IsValid(DefaultMappingContext) == true)
-			{
-				Subsystem->AddMappingContext(DefaultMappingContext, 0);
-			}
-		}
-	}
-	
 	if (IsValid(WidgetClass) == false)
 	{
 		return;
+	}
+}
+
+void AP48PlayerController::AcknowledgePossession(APawn* P)
+{
+	Super::AcknowledgePossession(P);
+	
+	if (!IsLocalPlayerController() || !P)
+	{
+		return;
+	}
+	
+	ResetIgnoreMoveInput();
+	ResetIgnoreLookInput();
+	
+	if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
+	{
+		Subsystem->ClearAllMappings();
+		
+		if (P->IsA<AP48PlayerCharacter>())
+		{
+			if (DefaultMappingContext)
+			{
+				Subsystem->AddMappingContext(DefaultMappingContext, 0);
+				UE_LOG(LogTemp, Warning, TEXT("[Controller] PlayerCharacter"));
+			}
+		}
+		else
+		{
+			if (SpectatorIMC)
+			{
+				Subsystem->AddMappingContext(SpectatorIMC, 0);
+				UE_LOG(LogTemp, Warning, TEXT("[Controller] Spectator"));
+			}
+		}
 	}
 }
 

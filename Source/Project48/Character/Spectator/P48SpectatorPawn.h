@@ -17,10 +17,6 @@ public:
 	AP48SpectatorPawn();
 
 protected:
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
-	TObjectPtr<UInputMappingContext> SpectatorMappingContext;
-	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
 	TObjectPtr<UInputAction> IA_SpectatorMove;
 	

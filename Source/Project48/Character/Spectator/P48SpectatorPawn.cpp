@@ -23,38 +23,19 @@ void AP48SpectatorPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
 	
-	APlayerController* PC =Cast<APlayerController>(GetController());
-	if (!PC)
+	if (UEnhancedInputComponent* EIC = Cast<UEnhancedInputComponent>(PlayerInputComponent))
 	{
-		return;
-	}
-	
-	PC->SetIgnoreMoveInput(false);
-	PC->SetIgnoreLookInput(false);
-	
-	if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PC->GetLocalPlayer()))
-	{
-		Subsystem->ClearAllMappings();
-		
-		if (SpectatorMappingContext)
+		if (IA_SpectatorMove)
 		{
-			Subsystem->AddMappingContext(SpectatorMappingContext, 0);
+			EIC->BindAction(IA_SpectatorMove, ETriggerEvent::Triggered, this, &AP48SpectatorPawn::Move);
 		}
-		
-		if (UEnhancedInputComponent* EIC = Cast<UEnhancedInputComponent>(PlayerInputComponent))
+		if (IA_SpectatorLook)
 		{
-			if (IA_SpectatorMove)
-			{
-				EIC->BindAction(IA_SpectatorMove, ETriggerEvent::Triggered, this, &AP48SpectatorPawn::Move);
-			}
-			if (IA_SpectatorLook)
-			{
-				EIC->BindAction(IA_SpectatorLook, ETriggerEvent::Triggered, this, &AP48SpectatorPawn::Look);
-			}
-			if (IA_SpectatorAltitude)
-			{
-				EIC->BindAction(IA_SpectatorAltitude, ETriggerEvent::Triggered, this, &AP48SpectatorPawn::Altitude);
-			}
+			EIC->BindAction(IA_SpectatorLook, ETriggerEvent::Triggered, this, &AP48SpectatorPawn::Look);
+		}
+		if (IA_SpectatorAltitude)
+		{
+			EIC->BindAction(IA_SpectatorAltitude, ETriggerEvent::Triggered, this, &AP48SpectatorPawn::Altitude);
 		}
 	}
 }
