@@ -145,18 +145,9 @@ void UP48UIManagerComponent::ClearUI()
 		HUDInstance->RemoveFromParent();
 		HUDInstance = nullptr;
 	}
-	
-	// TODO 로비 인스턴스
-	/* 
-	if (IsValid(LobbyInstance))
-	{
-		LobbyInstance->RemoveFromParent();
-		LobbyInstance = nullptr;
-	}
-	 */
 }
 
-void UP48UIManagerComponent::ServerRegisterNickname_Implementation(const FString& Nickname)
+/*void UP48UIManagerComponent::ServerRegisterNickname_Implementation(const FString& Nickname)
 {
 	
 	AHSPlayerController* HSPC = Cast<AHSPlayerController>(GetOwner());
@@ -238,7 +229,6 @@ void UP48UIManagerComponent::ClientNicknameRegistrationSucceeded_Implementation(
 	}
 	//ShowHUD();
 	PC->ClientTravel(TEXT("127.0.0.1:17777"), ETravelType::TRAVEL_Absolute);
-	// TODO 로비로 이동
 	
 }
 
@@ -271,7 +261,7 @@ void UP48UIManagerComponent::ClientNicknameRegistrationFailed_Implementation(EP4
 		InputNicknameInstance->SetErrorText(("Failed to register the nickname."));
 		break;
 	}
-}
+}*/
 
 void UP48UIManagerComponent::HUDOpenChatInput()
 {
