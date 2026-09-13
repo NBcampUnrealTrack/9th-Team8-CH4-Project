@@ -56,9 +56,6 @@ protected:
 	UFUNCTION(BlueprintCallable, Category="Attack|Attack")
 	void OnRightHandOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
 	
-	UFUNCTION(BlueprintCallable, Category="Attack|Hit")
-	void OnHit(const FVector& HitLocation, const FVector& HitDirection, float ImpulseStrength);
-	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Attack|GAS")
 	TSubclassOf<class UGameplayEffect> GroggyEffectClass;
 	
@@ -117,6 +114,9 @@ public:
 	
 	UFUNCTION(BlueprintCallable, Category="Attack|Attack")
 	void StopPunchAttack();
+	
+	UFUNCTION(BlueprintCallable, Category="Attack|Hit")
+	void OnHit(const FVector& HitLocation, const FVector& HitDirection, float ImpulseStrength);
 	
 	//Input Block
 	void SetInputBlocked(bool bBlocked);
@@ -210,6 +210,9 @@ private:
 	
 	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_PlayPunchMontage();
+	
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_PlayWeaponMontage();
 	
 	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_DeathRagDoll();
