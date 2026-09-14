@@ -88,6 +88,7 @@ private:
 	// Winner가 유효하면 승리, nullptr이면 무승부로 Match 종료
 	void FinishMatch(AP48PlayerState* Winner);
 	void RequestLobbyReturn();
+	void TryResetServer();
 
 	// 서버에서 생성한 규칙 객체 보관
 	UPROPERTY(Transient)
@@ -99,6 +100,7 @@ private:
 	FTimerHandle RoundEndCheckTimerHandle;
 	FTimerHandle LogoutCheckTimerHandle;
 	FTimerHandle ReturnLobbyTimerHandle;
+	FTimerHandle ServerResetTimerHandle;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Match")
 	float RoundEndCheckDelay = 0.1f;

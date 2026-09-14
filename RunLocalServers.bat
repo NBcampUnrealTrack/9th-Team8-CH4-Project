@@ -5,14 +5,12 @@ chcp 65001 >nul
 rem Project48 local dedicated-server launcher.
 rem Optional overrides:
 rem   set P48_UNREAL_EDITOR=D:\Epic Games\UE_5.7\Engine\Binaries\Win64\UnrealEditor.exe
-rem   set P48_EXPECTED_PLAYERS=2
 
 set "PROJECT_FILE=%~dp0Project48.uproject"
 set "GAME_MAP_FILE=%~dp0Content\MSJ\Maps\P48_FlyingIslandMap.umap"
 set "DRY_RUN=0"
 
 if /I "%~1"=="--dry-run" set "DRY_RUN=1"
-if not defined P48_EXPECTED_PLAYERS set "P48_EXPECTED_PLAYERS=2"
 
 if not exist "%PROJECT_FILE%" (
     echo [ERROR] Project48.uproject를 찾을 수 없습니다.
@@ -42,7 +40,7 @@ if not defined UE_EDITOR (
     exit /b 1
 )
 
-set "GAME_URL=/Game/MSJ/Maps/P48_FlyingIslandMap?game=/Game/KSH/Game/BP_P48SurvivalGameMode.BP_P48SurvivalGameMode_C?ExpectedPlayers=%P48_EXPECTED_PLAYERS%"
+set "GAME_URL=/Game/MSJ/Maps/P48_FlyingIslandMap?game=/Game/KSH/Game/BP_P48SurvivalGameMode.BP_P48SurvivalGameMode_C"
 set "LOBBY_URL=/Game/WJS/Lobby/L_Lobby"
 set "GAME_SERVER_ADDRESSES=127.0.0.1:17778,127.0.0.1:17779,127.0.0.1:17780"
 
@@ -52,7 +50,8 @@ echo Project48 로컬 서버 실행
 echo ========================================
 echo Unreal:  %UE_EDITOR%
 echo Project: %PROJECT_FILE%
-echo Players: %P48_EXPECTED_PLAYERS%
+echo Players: supplied by lobby on game start
+echo Mode: LocalServerTest - HTTP reporting disabled
 echo.
 
 if "%DRY_RUN%"=="1" (
@@ -67,7 +66,7 @@ if "%DRY_RUN%"=="1" (
 
 for %%P in (17778 17779 17780) do (
     echo 게임 서버를 실행합니다: 127.0.0.1:%%P
-    start "Project48 Game Server %%P" "%UE_EDITOR%" "%PROJECT_FILE%" "%GAME_URL%" -server -log -port=%%P
+    start "Project48 Game Server %%P" "%UE_EDITOR%" "%PROJECT_FILE%" "%GAME_URL%" -server -log -port=%%P -LocalServerTest
     timeout /t 1 /nobreak >nul
 )
 
