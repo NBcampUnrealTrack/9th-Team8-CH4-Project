@@ -7,6 +7,7 @@
 class UTextBlock;
 class UImage;
 struct FP48RankingData;
+class UTexture2D;
 
 UCLASS()
 class PROJECT48_API UP48ResultRow : public UUserWidget
@@ -38,4 +39,10 @@ protected:
 
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UImage> Image_Crown3;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	TObjectPtr<UTexture2D> CrownTexture;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	TObjectPtr<UTexture2D> DonutTexture;
 };
