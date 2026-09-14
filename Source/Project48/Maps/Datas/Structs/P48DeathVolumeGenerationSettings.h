@@ -9,10 +9,6 @@ struct PROJECT48_API FP48DeathVolumeGenerationSettings
 {
 	GENERATED_BODY()
 
-	/** 플레이어가 사망 영역에 진입하기 시작하는 월드 Z 높이입니다. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Death Volume", meta = (Units = "cm"))
-	float DeathZ = -2000.0f;
-
 	/** 생성 범위에 곱할 XY 배율입니다. 1보다 크게 두면 맵이 커질 때 안전 영역도 비례해 커집니다. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Death Volume", meta = (ClampMin = "1.0"))
 	float CoverageScale = 1.25f;
@@ -21,7 +17,11 @@ struct PROJECT48_API FP48DeathVolumeGenerationSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Death Volume", meta = (ClampMin = "0.0", Units = "cm"))
 	float HorizontalPadding = 1000.0f;
 
-	/** DeathZ 아래로 생성할 사망 볼륨의 두께입니다. */
+	/** 입력 Bounds가 실제 생성 맵보다 작더라도 보장할 사망 볼륨의 최소 XY 전체 크기입니다. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Death Volume", meta = (ClampMin = "1.0", Units = "cm"))
+	FVector2D MinimumHorizontalSize = FVector2D(50000.0f, 50000.0f);
+
+	/** 입력 Bounds의 최저점 아래로 생성할 사망 볼륨의 두께입니다. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Death Volume", meta = (ClampMin = "1.0", Units = "cm"))
 	float Depth = 1000.0f;
 };

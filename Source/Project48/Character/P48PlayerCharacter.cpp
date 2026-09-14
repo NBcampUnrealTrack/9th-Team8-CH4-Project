@@ -768,12 +768,7 @@ void AP48PlayerCharacter::OnStunTagChanged(const struct FGameplayTag CallbackTag
 
 void AP48PlayerCharacter::EquipWeaponHandle()
 {
-	if (bInputBlocked)
-	{
-		return;
-	}
-	
-	if (!IsLocallyControlled())
+	if (bInputBlocked || !IsLocallyControlled())
 	{
 		return;
 	}
@@ -786,7 +781,7 @@ void AP48PlayerCharacter::EquipWeaponHandle()
 	
 	if (PS->HasWeapon())
 	{
-		//TODO DropWeapon 예정
+		Server_DropWeapon();
 		return;
 	}
 	
@@ -855,6 +850,27 @@ void AP48PlayerCharacter::Server_EquipWeapon_Implementation(AP48WeaponBase* NewW
 	
 }
 
+void AP48PlayerCharacter::Server_DropWeapon_Implementation()
+{
+	if (!HasAuthority() || !Weapon)
+	{
+		return;
+	}
+	
+	AP48WeaponBase* DroppingWeapon = Weapon;
+	
+	Weapon = nullptr;
+	OnRep_Weapon();
+	
+	if (AP48PlayerState* PS = GetPlayerState<AP48PlayerState>())
+	{
+		PS->SetHasWeapon(false);
+	}
+	
+	const FVector ThrowImpulse = (GetActorForwardVector() + FVector(0.f, 0.f, 0.3f)).GetSafeNormal() * 400.f;
+	DroppingWeapon->OnDropped(ThrowImpulse);
+}
+
 void AP48PlayerCharacter::OnRep_Weapon()
 {
 	if (Weapon)
@@ -894,9 +910,7 @@ void AP48PlayerCharacter::OnRep_Weapon()
 	else
 	{
 		bEquipWeapon = false;
-		
 		WeaponAttackMontage = nullptr;
-		//TODO: 나중에 무기 버릴 때 
 	}
 }
 
