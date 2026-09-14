@@ -32,7 +32,7 @@ void UP48InputNicknameWidget::OnConfirmClicked()
 	
 	UIManager->ServerRegisterNickname(Nickname);*/
 	
-	UE_LOG(LogTemp, Error, TEXT("확인 버튼 눌림"));
+	UE_LOG(LogTemp, Log, TEXT("확인 버튼 눌림"));
 }
 
 void UP48InputNicknameWidget::SetErrorText(const FString& InText)
