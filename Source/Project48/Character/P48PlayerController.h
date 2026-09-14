@@ -4,6 +4,7 @@
 #include "GameFramework/PlayerController.h"
 #include "P48PlayerController.generated.h"
 
+class UP48UIManagerComponent;
 class UInputMappingContext;
 class UUserWidget;
 
@@ -46,4 +47,17 @@ public:
 protected:
 	UFUNCTION(Server, Reliable)
 	void Server_ReportMapGenerationComplete(int32 GenerationId);
+	
+	/* UI */
+public:
+	AP48PlayerController();
+	
+	virtual void SetupInputComponent() override;
+	virtual void ClientWasKicked_Implementation(const FText& KickReason) override;
+
+protected:
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	TObjectPtr<UP48UIManagerComponent>  UIManagerComp;
+	
+	void ToggleChatInput();
 };

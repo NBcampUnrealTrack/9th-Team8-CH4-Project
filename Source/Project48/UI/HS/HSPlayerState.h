@@ -10,7 +10,7 @@ class PROJECT48_API AHSPlayerState : public AP48PlayerState
 	GENERATED_BODY()
 	
 public:
-	AHSPlayerState();
+	/*AHSPlayerState();
 
 	UPROPERTY(Replicated, BlueprintReadOnly)
 	FString UserID;
@@ -26,6 +26,6 @@ public:
 	void SetNickname(const FString& InNickname);
 
 protected:
-	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;*/
 	
 };

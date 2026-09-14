@@ -10,6 +10,67 @@
 #include "Project48/Game/P48GameModeBase.h"
 #include "Project48/Maps/PCG/Common/P48PCGSeedState.h"
 #include "EngineUtils.h"
+#include "Project48/Database/P48NicknameDatabaseSubsystem.h"
+#include "Project48/UI/P48UIManagerComponent.h"
+
+/* UI */
+AP48PlayerController::AP48PlayerController()
+{
+	UIManagerComp = CreateDefaultSubobject<UP48UIManagerComponent>(TEXT("UIManagerComponent"));
+}
+
+void AP48PlayerController::SetupInputComponent()
+{
+	Super::SetupInputComponent();
+
+	if (IsValid(InputComponent))
+	{
+		InputComponent->BindKey(
+			EKeys::Enter,
+			IE_Pressed,
+			this,
+			&AP48PlayerController::ToggleChatInput
+		);
+	}
+}
+
+void AP48PlayerController::ToggleChatInput()
+{
+	UP48UIManagerComponent* UIManager = FindComponentByClass<UP48UIManagerComponent>();
+	if (IsValid(UIManager) == false) return;
+	
+	if (UIManager->GetIsChatInputOpen() == true) return;
+
+	UIManager->HUDOpenChatInput();
+}
+
+void AP48PlayerController::ClientWasKicked_Implementation(const FText& KickReason)
+{
+	Super::ClientWasKicked_Implementation(KickReason);
+	
+	UP48UIManagerComponent* UIManager = FindComponentByClass<UP48UIManagerComponent>();
+	if (IsValid(UIManager) == false) return;
+	
+	FString FailureMessage = KickReason.ToString();
+	
+	if (FailureMessage.Equals(TEXT("DuplicateNickname")))
+	{
+		UIManager->ShowConnectionRejectedMessage(EP48NicknameRegistrationResult::DuplicateNickname);
+	}
+	else if (FailureMessage.Equals(TEXT("InvalidFormat")))
+	{
+		UIManager->ShowConnectionRejectedMessage(EP48NicknameRegistrationResult::InvalidFormat);
+	}
+	else if (FailureMessage.Equals(TEXT("UserAlreadyRegistered")))
+	{
+		UIManager->ShowConnectionRejectedMessage(EP48NicknameRegistrationResult::UserAlreadyRegistered);
+	}
+	else
+	{
+		// default
+		UIManager->ShowConnectionRejectedMessage(EP48NicknameRegistrationResult::DatabaseError);
+	}
+}
 
 void AP48PlayerController::BeginPlay()
 {
