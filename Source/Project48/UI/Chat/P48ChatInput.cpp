@@ -1,7 +1,8 @@
 #include "P48ChatInput.h"
 #include "Components/EditableTextBox.h"
+#include "Project48/Character/P48PlayerController.h"
 #include "Project48/UI/P48UIManagerComponent.h"
-#include "Project48/UI/HS/HSPlayerController.h"
+//#include "Project48/UI/HS/HSPlayerController.h"
 
 void UP48ChatInput::NativeConstruct()
 {
@@ -31,7 +32,7 @@ void UP48ChatInput::OnChatInputTextCommitted(const FText& Text, ETextCommit::Typ
 	if (IsValid(OwningPC) == false) return;
 	
 	/* 추후에 PC변경 */
-	AHSPlayerController* PC = Cast<AHSPlayerController>(OwningPC);
+	AP48PlayerController* PC = Cast<AP48PlayerController>(OwningPC);
 	if (IsValid(PC) == false) return;
 	UP48UIManagerComponent* UIManager = PC->FindComponentByClass<UP48UIManagerComponent>();
 	

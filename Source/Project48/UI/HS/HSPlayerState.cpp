@@ -3,7 +3,7 @@
 #include "Project48/Character/P48PlayerCharacter.h"
 #include "Project48/UI/P48PlayerNameWidgetComponent.h"
 
-AHSPlayerState::AHSPlayerState()
+/*AHSPlayerState::AHSPlayerState()
 {
 	bReplicates = true;
 }
@@ -34,4 +34,4 @@ void AHSPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME(AHSPlayerState, Nickname);
-}
+}*/

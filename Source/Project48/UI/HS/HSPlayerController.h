@@ -11,10 +11,9 @@ class PROJECT48_API AHSPlayerController : public AP48PlayerController
 {
 	GENERATED_BODY()
 	
-public:
+/*public:
 	AHSPlayerController();
 	
-	virtual void BeginPlay() override;
 	virtual void SetupInputComponent() override;
 	virtual void ClientWasKicked_Implementation(const FText& KickReason) override;
 
@@ -22,5 +21,5 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	TObjectPtr<UP48UIManagerComponent>  UIManagerComp;
 	
-	void ToggleChatInput();
+	void ToggleChatInput();*/
 };

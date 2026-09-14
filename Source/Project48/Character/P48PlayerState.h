@@ -67,4 +67,19 @@ public:
 	// 무기 장착 상태 갱신 함수
 	void SetHasWeapon(bool NewHasWeapon);
 	void ResetHasWeapon();
+	
+	/* UI */
+public:
+	UPROPERTY(Replicated, BlueprintReadOnly)
+	FString UserID;
+	
+	UPROPERTY(ReplicatedUsing = OnRep_Nickname)
+	FString Nickname;
+
+	UFUNCTION()
+	void OnRep_Nickname();
+
+	const FString& GetNickname() const { return Nickname; }
+
+	void SetNickname(const FString& InNickname);
 };

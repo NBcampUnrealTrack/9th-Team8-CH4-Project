@@ -3,9 +3,11 @@
 
 #include "P48PlayerState.h"
 
+#include "P48PlayerCharacter.h"
 #include "Project48/Game/P48SurvivalGameMode.h"
 
 #include "Net/UnrealNetwork.h"
+#include "Project48/UI/P48PlayerNameWidgetComponent.h"
 
 void AP48PlayerState::GetLifetimeReplicatedProps(
 	TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -18,6 +20,7 @@ void AP48PlayerState::GetLifetimeReplicatedProps(
 	DOREPLIFETIME(AP48PlayerState, RoundWinCount);
 	DOREPLIFETIME(AP48PlayerState, StunCount);
 	DOREPLIFETIME(AP48PlayerState, bHasWeapon);
+	DOREPLIFETIME(AP48PlayerState, Nickname);
 }
 
 void AP48PlayerState::SetReady(bool bNewReady)
@@ -164,4 +167,26 @@ void AP48PlayerState::ResetHasWeapon()
 		return;
 	}
 	bHasWeapon = false;
+}
+
+/* UI */
+void AP48PlayerState::SetNickname(const FString& InNickname)
+{
+	if (HasAuthority() == false) return;
+
+	Nickname = InNickname;
+}
+
+void AP48PlayerState::OnRep_Nickname()
+{
+	// 클라이언트에서 닉네임이 변경되었을 때 호출
+	AP48PlayerCharacter* P48Character = Cast<AP48PlayerCharacter>(GetPawn());
+
+	if (IsValid(P48Character) == false) return;
+
+	UP48PlayerNameWidgetComponent* Nameplate = P48Character->FindComponentByClass<UP48PlayerNameWidgetComponent>();
+
+	if (IsValid(Nameplate) == false) return;
+
+	Nameplate->UpdateNickname();
 }
