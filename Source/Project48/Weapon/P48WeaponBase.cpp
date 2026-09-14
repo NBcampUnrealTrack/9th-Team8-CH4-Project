@@ -369,3 +369,22 @@ void AP48WeaponBase::ResetAttackState()
 		HitActorsThisAttack.Reset();
 	}
 }
+
+void AP48WeaponBase::OnDropped(const FVector& DropImpulse)
+{
+	DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+	SetOwner(nullptr);
+	
+	if (UStaticMeshComponent* WeaponMesh = FindComponentByClass<UStaticMeshComponent>())
+	{
+		WeaponMesh->SetCollisionProfileName(UCollisionProfile::PhysicsActor_ProfileName);
+		WeaponMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+		WeaponMesh->SetSimulatePhysics(true);
+		WeaponMesh->SetEnableGravity(true);
+		
+		if (!DropImpulse.IsNearlyZero())
+		{
+			WeaponMesh->AddImpulse(DropImpulse, NAME_None, true);
+		}
+	}
+}
