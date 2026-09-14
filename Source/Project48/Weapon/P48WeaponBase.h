@@ -76,9 +76,9 @@ private:
 		bool bFromSweep,
 		const FHitResult& SweepResult);
 	
-	TSet<TWeakObjectPtr<AActor>> HitActorsThisAttack;
+	bool bHasHitActorThisAttack = false;
 	
-	void HandleWeaponHit(AActor* HitActor);
+	bool HandleWeaponHit(AActor* HitActor);
 	
 	FVector CalculateKnockbackDirection(const AActor* HitActor) const;
 };

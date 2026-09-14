@@ -182,7 +182,6 @@ void AP48WeaponBase::StartAttackDetection()
 		return;
 	}
 	
-	//HitActorsThisAttack.Reset();
 	bIsAttackDetectionActive = true;
 	
 	AttackCollisionComponent->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
@@ -232,32 +231,31 @@ void AP48WeaponBase::OnAttackCollisionBeginOverlap(
 		return;
 	}
 	
-	const TWeakObjectPtr<AActor> HitActor(OtherActor);
-	
-	if (HitActorsThisAttack.Contains(HitActor))
+	if (bHasHitActorThisAttack)
 	{
 		return;
 	}
 	
-	HitActorsThisAttack.Add(HitActor);
-	
-	HandleWeaponHit(OtherActor);
-	
-	UE_LOG(LogP48Weapon, Log, TEXT("%s: 공격 대상 감지 [%s]"), *GetName(), *OtherActor->GetName());
+	if (HandleWeaponHit(OtherActor))
+	{
+		bHasHitActorThisAttack = true;
+		
+		UE_LOG(LogP48Weapon, Log, TEXT("%s: 공격 대상 감지 [%s]"), *GetName(), *OtherActor->GetName());
+	}
 }
 
-void AP48WeaponBase::HandleWeaponHit(AActor* HitActor)
+bool AP48WeaponBase::HandleWeaponHit(AActor* HitActor)
 {
 	// 서버에서만 무기 피격 처리
 	if (!HasAuthority())
 	{
-		return;
+		return false;
 	}
 	
 	// 유효하지 않은 피격 대상 제외
 	if (!IsValid(HitActor))
 	{
-		return;
+		return false;
 	}
 	
 	// 무기 DT와 그로기 GE 설정 검증
@@ -265,14 +263,14 @@ void AP48WeaponBase::HandleWeaponHit(AActor* HitActor)
 	{
 		UE_LOG(LogP48Weapon, Warning, TEXT("%s: 유효한 무기가 없어 피격을 처리할 수 없습니다."), *GetName());
 		
-		return;
+		return false;
 	}
 	
 	if (!GroggyDamageEffectClass)
 	{
 		UE_LOG(LogP48Weapon, Warning, TEXT("%s GroggyDamageEffectClass가 설정되지 않았습니다."), *GetName());
 		
-		return;
+		return false;
 	}
 	
 	// 피격 대상 ASC 조회. ASC가 없는 오브젝트 공격 대상 제외
@@ -288,7 +286,7 @@ void AP48WeaponBase::HandleWeaponHit(AActor* HitActor)
 			*GetName(),
 			*HitActor->GetName());
 		
-		return;
+		return false;
 	}
 	
 	// 플레이어 피격 함수에 전달할 넉백 정보
@@ -320,7 +318,7 @@ void AP48WeaponBase::HandleWeaponHit(AActor* HitActor)
 	{
 		UE_LOG(LogP48Weapon, Error, TEXT("%s Groggy GameplayEffect Spec 생성에 실패했습니다."), *GetName());
 		
-		return;
+		return false;
 	}
 	
 	static const FGameplayTag GroggyDamageTag =
@@ -344,6 +342,8 @@ void AP48WeaponBase::HandleWeaponHit(AActor* HitActor)
 		*GetName(),
 		*HitActor->GetName(),
 		CachedWeaponData.GroggyDamage);
+	
+	return true;
 }
 
 FVector AP48WeaponBase::CalculateKnockbackDirection(const AActor* HitActor) const
@@ -366,7 +366,7 @@ void AP48WeaponBase::ResetAttackState()
 {
 	if (HasAuthority())
 	{
-		HitActorsThisAttack.Reset();
+		bHasHitActorThisAttack = false;
 	}
 }
 
