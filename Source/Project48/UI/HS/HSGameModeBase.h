@@ -8,7 +8,8 @@ UCLASS()
 class PROJECT48_API AHSGameModeBase : public AP48GameModeBase
 {
 	GENERATED_BODY()
-	
+
+public:
 	virtual void PreLogin(
 		const FString& Options,
 		const FString& Address,

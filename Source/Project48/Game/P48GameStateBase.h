@@ -8,6 +8,8 @@
 
 class AP48PlayerState;
 
+struct FChatMessage;
+
 // 델리게이트 추가
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
 	FP48OnRoundResultChanged,
@@ -147,4 +149,9 @@ protected:
 	// 결정전 준비 및 진행 중인지 여부
 	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Match")
 	bool bIsTiebreaker = false;
+	
+	/* UI */
+public:
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastReceiveChatMessage(const FChatMessage& InChatMessage);
 };

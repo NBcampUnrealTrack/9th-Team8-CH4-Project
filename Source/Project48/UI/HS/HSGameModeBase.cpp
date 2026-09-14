@@ -1,7 +1,7 @@
 #include "HSGameModeBase.h"
-#include "HSPlayerState.h"
 #include "GameFramework/GameStateBase.h"
 #include "Kismet/GameplayStatics.h"
+#include "Project48/Character/P48PlayerState.h"
 #include "Project48/Database/P48NicknameDatabaseSubsystem.h"
 #include "Project48/Game/P48GameInstance.h"
 
@@ -60,14 +60,14 @@ void AHSGameModeBase::PreLogin(
 		{
 			for (APlayerState* ConnectedPlayerState : CurrentGameState->PlayerArray)
 			{
-				const AHSPlayerState* HSPlayerState = Cast<AHSPlayerState>(ConnectedPlayerState);
+				const AP48PlayerState* P48PlayerState = Cast<AP48PlayerState>(ConnectedPlayerState);
 				
-				if (!IsValid(HSPlayerState))
+				if (!IsValid(P48PlayerState))
 				{
 					continue;
 				}
 				
-				if (HSPlayerState->GetNickname().Equals(StoredNickname, ESearchCase::IgnoreCase))
+				if (P48PlayerState->GetNickname().Equals(StoredNickname, ESearchCase::IgnoreCase))
 				{
 					ErrorMessage = TEXT("UserAlreadyRegistered");
 					
@@ -127,7 +127,7 @@ void AHSGameModeBase::PostLogin(APlayerController* NewPC)
 	
 	if (IsValid(NewPC) == false) return;
 	
-	AHSPlayerState* PS = NewPC->GetPlayerState<AHSPlayerState>();
+	AP48PlayerState* PS = NewPC->GetPlayerState<AP48PlayerState>();
 	if (IsValid(PS) == false) return;
 
 	UP48GameInstance* P48GI = Cast<UP48GameInstance>(GetGameInstance());

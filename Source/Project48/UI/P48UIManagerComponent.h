@@ -41,8 +41,6 @@ protected:
 	TSubclassOf<UP48HUD> HUDClass; // UP48HUD 기반으로 만들어진 WidgetBlueprint의 클래스
 	UPROPERTY()
 	TObjectPtr<UP48HUD> HUDInstance; // 실제로 생성된 채팅 위젯 객체를 저장하는 변수
-	
-	// TODO 로비 위젯 클래스 추가
 
 	/* 메인 메뉴 */
 public:
@@ -50,17 +48,16 @@ public:
 	void ShowNickname();
 	void ShowHUD();
 	void ClearUI();
-	// TODO void ShowLobby();
 	
 	UFUNCTION()
 	void ShowConnectionRejectedMessage(const EP48NicknameRegistrationResult& result);
 	
-	UFUNCTION(Server, Reliable)
+	/*UFUNCTION(Server, Reliable)
 	void ServerRegisterNickname(const FString& Nickname);
 	UFUNCTION(Client, Reliable)
 	void ClientNicknameRegistrationSucceeded(const FString& Nickname);
 	UFUNCTION(Client, Reliable)
-	void ClientNicknameRegistrationFailed(EP48NicknameRegistrationResult Result);
+	void ClientNicknameRegistrationFailed(EP48NicknameRegistrationResult Result);*/
 	
 	/* Chat System */
 public:

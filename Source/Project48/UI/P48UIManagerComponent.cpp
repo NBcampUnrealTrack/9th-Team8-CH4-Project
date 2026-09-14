@@ -1,8 +1,8 @@
 #include "P48UIManagerComponent.h"
 #include "Project48/UI/HS/HSGameStateBase.h"
 #include "GameFramework/PlayerState.h"
-#include "HS/HSPlayerController.h"
-#include "HS/HSPlayerState.h"
+//#include "HS/HSPlayerController.h"
+//#include "HS/HSPlayerState.h"
 #include "Project48/Character/P48PlayerState.h"
 #include "Project48/Database/P48NicknameDatabaseSubsystem.h"
 #include "Project48/UI/Chat/ChatMessageData.h"
@@ -10,6 +10,7 @@
 #include "Project48/UI/MainMenu/P48MainMenuWidget.h"
 #include "Project48/UI/MainMenu/P48InputNicknameWidget.h"
 #include "HAL/PlatformProcess.h"
+#include "Project48/Character/P48PlayerController.h"
 
 UP48UIManagerComponent::UP48UIManagerComponent()
 {
@@ -20,7 +21,7 @@ void UP48UIManagerComponent::BeginPlay()
 {
 	Super::BeginPlay();
 	
-	AHSPlayerController* PC = Cast<AHSPlayerController>(GetOwner());
+	AP48PlayerController* PC = Cast<AP48PlayerController>(GetOwner());
 	if (IsValid(PC) == false)
 	{
 		return;
@@ -47,7 +48,7 @@ void UP48UIManagerComponent::BeginPlay()
 
 void UP48UIManagerComponent::ShowMainMenu()
 {
-	AHSPlayerController* PC = Cast<AHSPlayerController>(GetOwner());
+	AP48PlayerController* PC = Cast<AP48PlayerController>(GetOwner());
 	if (IsValid(PC) == false)
 	{
 		UE_LOG(LogTemp, Error, TEXT("갑자기 왜그래"));
@@ -78,7 +79,7 @@ void UP48UIManagerComponent::ShowMainMenu()
 
 void UP48UIManagerComponent::ShowNickname()
 {
-	AHSPlayerController* PC = Cast<AHSPlayerController>(GetOwner());
+	AP48PlayerController* PC = Cast<AP48PlayerController>(GetOwner());
 	if (IsValid(PC) == false) return;
 
 	if (IsValid(InputNicknameClass) == false)
@@ -104,7 +105,7 @@ void UP48UIManagerComponent::ShowNickname()
 
 void UP48UIManagerComponent::ShowHUD()
 {
-	AHSPlayerController* PC = Cast<AHSPlayerController>(GetOwner());
+	AP48PlayerController* PC = Cast<AP48PlayerController>(GetOwner());
 	if (IsValid(PC) == false) return;
 	
 	if (IsValid(HUDClass) == false)
@@ -145,18 +146,9 @@ void UP48UIManagerComponent::ClearUI()
 		HUDInstance->RemoveFromParent();
 		HUDInstance = nullptr;
 	}
-	
-	// TODO 로비 인스턴스
-	/* 
-	if (IsValid(LobbyInstance))
-	{
-		LobbyInstance->RemoveFromParent();
-		LobbyInstance = nullptr;
-	}
-	 */
 }
 
-void UP48UIManagerComponent::ServerRegisterNickname_Implementation(const FString& Nickname)
+/*void UP48UIManagerComponent::ServerRegisterNickname_Implementation(const FString& Nickname)
 {
 	
 	AHSPlayerController* HSPC = Cast<AHSPlayerController>(GetOwner());
@@ -238,7 +230,6 @@ void UP48UIManagerComponent::ClientNicknameRegistrationSucceeded_Implementation(
 	}
 	//ShowHUD();
 	PC->ClientTravel(TEXT("127.0.0.1:17777"), ETravelType::TRAVEL_Absolute);
-	// TODO 로비로 이동
 	
 }
 
@@ -271,14 +262,14 @@ void UP48UIManagerComponent::ClientNicknameRegistrationFailed_Implementation(EP4
 		InputNicknameInstance->SetErrorText(("Failed to register the nickname."));
 		break;
 	}
-}
+}*/
 
 void UP48UIManagerComponent::HUDOpenChatInput()
 {
 	if (IsValid(HUDInstance) == false) return;
 
 	bIsChatInputOpen = true;
-	AHSPlayerController* PC = Cast<AHSPlayerController>(GetOwner());
+	AP48PlayerController* PC = Cast<AP48PlayerController>(GetOwner());
 	if (IsValid(PC) == false) return;
 	PC->SetInputMode(FInputModeGameAndUI());
 	
@@ -295,7 +286,7 @@ void UP48UIManagerComponent::HUDCloseChatInput()
 
 	HUDInstance->CloseChatInput();
 
-	AHSPlayerController* PC = Cast<AHSPlayerController>(GetOwner());
+	AP48PlayerController* PC = Cast<AP48PlayerController>(GetOwner());
 	if (IsValid(PC) == false) return;
 	PC->SetInputMode(FInputModeGameOnly());
 
@@ -355,16 +346,16 @@ void UP48UIManagerComponent::ServerSendChatMessage_Implementation(
 	const FString& InChatMessage)
 {   
 	/* 추후에 GSB변경 */
-	AHSGameStateBase* GameState = GetWorld()->GetGameState<AHSGameStateBase>();
+	AP48GameStateBase* GameState = GetWorld()->GetGameState<AP48GameStateBase>();
 	if (IsValid(GameState) == false) return;
-	AHSPlayerController* PC = Cast<AHSPlayerController>(GetOwner());
+	AP48PlayerController* PC = Cast<AP48PlayerController>(GetOwner());
 	if (IsValid(PC) == false) return;
-	AHSPlayerState* HSPS = PC->GetPlayerState<AHSPlayerState>();
-	if (IsValid(HSPS) == false) return;
+	AP48PlayerState* P48PS = PC->GetPlayerState<AP48PlayerState>();
+	if (IsValid(P48PS) == false) return;
 	
 	FChatMessage ChatMessage;
 	
-	ChatMessage.PlayerName = HSPS->GetNickname();
+	ChatMessage.PlayerName = P48PS->GetNickname();
 	ChatMessage.Message = InChatMessage;
 	
 	GameState->MulticastReceiveChatMessage(ChatMessage);

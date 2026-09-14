@@ -5,7 +5,9 @@
 #include "Net/UnrealNetwork.h"
 #include "Project48/Character/P48PlayerState.h"
 #include "Engine/GameInstance.h"
+#include "Project48/Character/P48PlayerController.h"
 #include "Project48/Lobby/P48LobbyTravelSubsystem.h"
+#include "Project48/UI/P48UIManagerComponent.h"
 
 void AP48GameStateBase::BeginPlay()
 {
@@ -248,4 +250,16 @@ void AP48GameStateBase::SetTiebreaker(bool bNewTiebreaker)
 	bIsTiebreaker = bNewTiebreaker;
 
 	UE_LOG(LogTemp, Log, TEXT("[Server] Tiebreaker state: %s"), bIsTiebreaker ? TEXT("true") : TEXT("false"));
+}
+
+/* UI */
+void AP48GameStateBase::MulticastReceiveChatMessage_Implementation(const FChatMessage& InChatMessage)
+{
+	/* 추후에 PC변경 */
+	AP48PlayerController* PC = Cast<AP48PlayerController>(GetWorld()->GetFirstPlayerController());
+	if (IsValid(PC) == false) return;
+	UP48UIManagerComponent* UIManager = PC->FindComponentByClass<UP48UIManagerComponent>();
+	if (IsValid(UIManager) == false) return;
+	
+	UIManager->PrintChatMessageString(InChatMessage);
 }

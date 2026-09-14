@@ -42,7 +42,7 @@ void UP48RankingWidget::UpdateRanking()
 
     if (TextBlock_FirstPlayerName)
     {
-        TextBlock_FirstPlayerName->SetText(FText::FromString(FirstPlayer->GetPlayerName()));
+        TextBlock_FirstPlayerName->SetText(FText::FromString(FirstPlayer->GetNickname()));
     }
 
     if (TextBlock_FirstPlayerWin)
@@ -57,7 +57,7 @@ void UP48RankingWidget::UpdateRanking()
 
     if (TextBlock_MyPlayerName)
     {
-        TextBlock_MyPlayerName->SetText(FText::FromString(MyPlayerState->GetPlayerName()));
+        TextBlock_MyPlayerName->SetText(FText::FromString(MyPlayerState->GetNickname()));
     }
 
     if (TextBlock_MyPlayerWin)
