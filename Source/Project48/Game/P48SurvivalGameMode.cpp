@@ -6,12 +6,17 @@
 #include "Project48/Character/P48PlayerState.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/Pawn.h"
+#include "GameFramework/SpectatorPawn.h"
+#include "UObject/ConstructorHelpers.h"
 #include "Rule/P48BestOfRoundsMatchFlowRule.h"
 #include "Rule/P48LastPlayerStandingCondition.h"
 #include "TimerManager.h"
 
 AP48SurvivalGameMode::AP48SurvivalGameMode()
 {
+	static ConstructorHelpers::FClassFinder<ASpectatorPawn> SpectatorBP(
+		TEXT("/Game/OJH/Spectator/BP_P48SpectatorPawn"));
+	if (SpectatorBP.Succeeded()) { SpectatorClass = SpectatorBP.Class; }
 	MatchFlowRuleClass = UP48BestOfRoundsMatchFlowRule::StaticClass();
 	RoundWinConditionClass = UP48LastPlayerStandingCondition::StaticClass();
 }
@@ -94,14 +99,15 @@ void AP48SurvivalGameMode::NotifyPlayerEliminated(AP48PlayerState* EliminatedPla
 		SetPlayerInputBlocked(PC, true);
 		const TWeakObjectPtr<APawn> DeadPawn = PC->GetPawn();
 		FTimerHandle DeathTimer;
-		GetWorldTimerManager().SetTimer(DeathTimer, FTimerDelegate::CreateWeakLambda(this, [DeadPawn]()
+		GetWorldTimerManager().SetTimer(DeathTimer, FTimerDelegate::CreateWeakLambda(this, [this, DeadPawn]()
 		{
 			// 새 Pawn이 아닌 사망 당시 Pawn만 제거한다.
 			if (APawn* Pawn = DeadPawn.Get())
 			{
-				if (AController* Controller = Pawn->GetController()) { Controller->UnPossess(); }
+				APlayerController* Controller = Cast<APlayerController>(Pawn->GetController());
+				if (Controller) { Controller->UnPossess(); }
 				Pawn->Destroy();
-				// TODO(플레이어): 관전 진입 API 전달 후 연결.
+				if (Controller) { StartPlayerSpectating(Controller); }
 			}
 		}), 3.0f, false);
 	}

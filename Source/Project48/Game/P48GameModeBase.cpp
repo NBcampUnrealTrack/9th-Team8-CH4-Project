@@ -20,6 +20,7 @@
 
 
 #include "GameFramework/Pawn.h"
+#include "GameFramework/SpectatorPawn.h"
 #include "GameFramework/PlayerController.h"
 
 namespace P48MapReadiness
@@ -524,13 +525,14 @@ void AP48GameModeBase::PrepareNextRound()
 	{
 		APlayerController* PC = It->Get();
 		const AP48PlayerState* Player = PC ? PC->GetPlayerState<AP48PlayerState>() : nullptr;
-		if (Player && Player->IsAlive())
+		if (Player && Player->IsAlive() && !PC->GetPawn<ASpectatorPawn>())
 		{
 			if (APawn* Pawn = PC->GetPawn())
 			{
 				PC->UnPossess();
 				Pawn->Destroy();
 			}
+			if (!IsRoundSpawnParticipant(Player)) { StartPlayerSpectating(PC); }
 		}
 	}
 
@@ -593,8 +595,33 @@ void AP48GameModeBase::SetRoundInputBlocked(bool bBlocked)
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{
 		APlayerController* PC = It->Get();
+		// 관전 이동/시점은 플레이용 조작 차단 대상에서 제외한다.
+		if (PC && PC->GetPawn<ASpectatorPawn>()) { continue; }
 		const AP48PlayerState* Player = PC ? PC->GetPlayerState<AP48PlayerState>() : nullptr;
 		SetPlayerInputBlocked(PC, bBlocked || !IsRoundSpawnParticipant(Player) || !Player->IsAlive());
+	}
+}
+
+void AP48GameModeBase::StartPlayerSpectating(APlayerController* PlayerController)
+{
+	FActorSpawnParameters SpawnParameters;
+	SpawnParameters.Owner = PlayerController;
+	SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	ASpectatorPawn* Pawn = GetWorld()->SpawnActor<ASpectatorPawn>(SpectatorClass,
+		PlayerController->GetFocalLocation(), PlayerController->GetControlRotation(), SpawnParameters);
+	if (!Pawn) { return; }
+	SetPlayerInputBlocked(PlayerController, false);
+	PlayerController->Possess(Pawn);
+	PlayerController->PlayerState->SetIsSpectator(true);
+}
+
+void AP48GameModeBase::StopPlayerSpectating(APlayerController* PlayerController)
+{
+	if (ASpectatorPawn* Pawn = PlayerController->GetPawn<ASpectatorPawn>())
+	{
+		PlayerController->UnPossess();
+		Pawn->Destroy();
+		PlayerController->PlayerState->SetIsSpectator(false);
 	}
 }
 
@@ -630,7 +657,8 @@ bool AP48GameModeBase::RespawnRoundParticipants(
 			UE_LOG(LogTemp, Error, TEXT("[RoundSpawn] Invalid respawn input at index %d."), Index);
 			return false;
 		}
-		if (PlayerController->GetPawn() && !PlayerController->GetPlayerState<AP48PlayerState>()->IsAlive())
+		if (PlayerController->GetPawn() && !PlayerController->GetPawn<ASpectatorPawn>()
+			&& !PlayerController->GetPlayerState<AP48PlayerState>()->IsAlive())
 		{
 			return false;
 		}
@@ -642,6 +670,7 @@ bool AP48GameModeBase::RespawnRoundParticipants(
 		AP48PlayerStart* PlayerStart = PlayerStarts[Index];
 
 		// 이전 시도에서 재생성에 성공한 참가자는 유지한다.
+		StopPlayerSpectating(PlayerController);
 		if (PlayerController->GetPawn()) { continue; }
 
 		RestartPlayerAtPlayerStart(PlayerController, PlayerStart);
@@ -707,8 +736,13 @@ void AP48GameModeBase::TryFinishRoundMapPreparation()
 		// PCG가 없는 테스트 맵도 Pawn 정리 후 기본 PlayerStart에서 재생성한다.
 		for (APlayerController* PC : Participants)
 		{
-			if (PC->GetPawn() && !PC->GetPlayerState<AP48PlayerState>()->IsAlive()) { return; }
-			if (!PC->GetPawn()) { RestartPlayer(PC); }
+			if (PC->GetPawn() && !PC->GetPawn<ASpectatorPawn>()
+				&& !PC->GetPlayerState<AP48PlayerState>()->IsAlive()) { return; }
+			StopPlayerSpectating(PC);
+			if (!PC->GetPawn())
+			{
+				RestartPlayer(PC);
+			}
 			if (!PC->GetPawn()) { return; }
 			SetPlayerInputBlocked(PC, true);
 		}
