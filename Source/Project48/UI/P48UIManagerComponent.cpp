@@ -11,6 +11,7 @@
 #include "Project48/UI/MainMenu/P48InputNicknameWidget.h"
 #include "HAL/PlatformProcess.h"
 #include "Project48/Character/P48PlayerController.h"
+#include "Project48/Game/P48GameInstance.h"
 
 UP48UIManagerComponent::UP48UIManagerComponent()
 {
@@ -40,9 +41,20 @@ void UP48UIManagerComponent::BeginPlay()
 	{
 		ShowMainMenu();
 	}
-	else if (LevelName.Contains(TEXT("HSGameLevel")))
+	else if (LevelName.Contains(TEXT("P48_FlyingIslandMap")))
 	{
+		UE_LOG(LogTemp, Log, TEXT("들어옴"));
 		ShowHUD();
+		UP48GameInstance* P48GameInstance = Cast<UP48GameInstance>(PC->GetGameInstance());
+		
+		if (P48GameInstance)
+		{
+			AP48PlayerState* PS = PC->GetPlayerState<AP48PlayerState>();
+			if (PS)
+			{
+				PS->SetNickname(P48GameInstance->GetNickname());
+			}
+		}
 	}
 }
 
