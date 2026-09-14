@@ -32,6 +32,9 @@ struct FP48LobbyRoomInfo
 
 	UPROPERTY(BlueprintReadOnly, Category = "Lobby")
 	bool bIsReturningToLobby = false;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Lobby")
+	bool bIsGameServerResetting = false;
 };
 
 USTRUCT(BlueprintType)

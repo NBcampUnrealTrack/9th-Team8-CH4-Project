@@ -106,9 +106,10 @@ void AP48LobbyPlayerController::Client_ReportLobbyRequestFailure_Implementation(
 
 void AP48LobbyPlayerController::Client_TravelToGameServer_Implementation(
 	const FString& ServerAddress, const FString& ReturnAddress,
-	int32 ReturnRoomId, const FGuid& ReturnMemberId)
+	int32 ReturnRoomId, const FGuid& MatchId, const FGuid& ReturnMemberId,
+	int32 ExpectedPlayers)
 {
-	if (!IsLocalController())
+	if (!IsLocalController() || !MatchId.IsValid())
 	{
 		return;
 	}
@@ -128,6 +129,15 @@ void AP48LobbyPlayerController::Client_TravelToGameServer_Implementation(
 	SetInputMode(FInputModeGameOnly());
 	bShowMouseCursor = false;
 	FString Destination = ServerAddress;
+	// Correlation data for the game server's eventual match-end report. These
+	// client-visible values are not proof that the report came from a server.
+	Destination += FString::Printf(TEXT("?LobbyRoomId=%d?LobbyMatchId=%s?LobbyMemberId=%s"),
+		ReturnRoomId, *MatchId.ToString(EGuidFormats::Digits),
+		*ReturnMemberId.ToString(EGuidFormats::Digits));
+	if (ExpectedPlayers > 0)
+	{
+		Destination += FString::Printf(TEXT("?ExpectedPlayers=%d"), ExpectedPlayers);
+	}
 	if (const APlayerState* LocalPlayerState = PlayerState)
 	{
 		const FString Nickname = LocalPlayerState->GetPlayerName().TrimStartAndEnd();

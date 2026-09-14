@@ -55,7 +55,8 @@ public:
 
 	UFUNCTION(Client, Reliable)
 	void Client_TravelToGameServer(const FString& ServerAddress,
-		const FString& ReturnAddress, int32 ReturnRoomId, const FGuid& ReturnMemberId);
+		const FString& ReturnAddress, int32 ReturnRoomId,
+		const FGuid& MatchId, const FGuid& ReturnMemberId, int32 ExpectedPlayers);
 
 	UFUNCTION(Client, Reliable)
 	void Client_ConfirmLobbyReturn();

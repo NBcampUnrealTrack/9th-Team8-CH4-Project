@@ -49,7 +49,12 @@ struct FP48LobbyRoomState
 	TArray<FP48LobbyTravelMember> TravelMembers;
 
 	FString AssignedGameServerAddress;
+	// Correlates a game-server completion report with this specific assignment.
+	// This is an identifier, not an authentication credential.
+	FGuid MatchId;
 	bool bReturningToLobby = false;
+	bool bGameSessionEnded = false;
+	bool bGameServerReadyForReuse = false;
 
 	void RecordGameHandoff(const FString& Destination);
 	bool RecordMemberHandoff(AP48PlayerState* State);
@@ -59,6 +64,12 @@ struct FP48LobbyRoomState
 	void RemoveParticipant(AP48PlayerState* State, bool bPreserveTravelRecord);
 	int32 GetMemberCount() const;
 	bool IsEmpty() const { return Participants.IsEmpty() && TravelMembers.IsEmpty(); }
+};
+
+struct FP48PendingGameServerReset
+{
+	int32 RoomId = INDEX_NONE;
+	FString ServerAddress;
 };
 
 UCLASS()
@@ -91,6 +102,14 @@ public:
 		int32 RoomId, const FString& Password, FText& OutError);
 	void LeaveLobby(AP48LobbyPlayerController* PlayerController);
 	bool IsLobbyParticipant(const AP48LobbyPlayerController* PlayerController) const;
+
+	// Server-side integration point: starts the return grace period even if no
+	// client returns. The transport must authenticate the reporting server;
+	// MatchId only rejects stale reports.
+	bool ReportGameSessionEnded(int32 RoomId, const FGuid& MatchId);
+	// Game server reports this only after its old match state has been reset.
+	// The transport must authenticate the reporting server before calling it.
+	bool ReportGameServerReady(int32 RoomId, const FGuid& MatchId);
 
 protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Lobby|Session", meta = (ClampMin = "2"))
@@ -141,11 +160,15 @@ private:
 	void StartLobbyReturnGracePeriod(int32 RoomId);
 	void HandleLobbyReturnTimeout(int32 RoomId);
 	void FinalizeLobbyReturn(FP48LobbyRoomState& Room, bool bDiscardMissingMembers);
+	void CloseGameRoom(int32 RoomId);
 	void RemoveLobbyParticipant(AP48PlayerState* PlayerState, bool bPreserveTravelRecord = false);
 
 	UPROPERTY(Transient)
 	TArray<FP48LobbyRoomState> LobbyRooms;
 
 	TMap<int32, FTimerHandle> LobbyReturnTimers;
+	// Closed rooms no longer own their server assignment, but the server must
+	// still be reserved until its authenticated reset acknowledgement arrives.
+	TMap<FGuid, FP48PendingGameServerReset> PendingGameServerResets;
 
 };

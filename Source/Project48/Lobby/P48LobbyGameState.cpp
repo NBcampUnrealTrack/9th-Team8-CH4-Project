@@ -110,6 +110,15 @@ bool AP48LobbyGameState::CanPlayerStartGame(const APlayerState* PlayerState) con
 	{
 		return false;
 	}
+	const FP48LobbyRoomInfo* HostRoom = LobbyRooms.FindByPredicate(
+		[HostEntry](const FP48LobbyRoomInfo& Candidate)
+		{
+			return Candidate.RoomId == HostEntry->RoomId;
+		});
+	if (!HostRoom || HostRoom->bIsReturningToLobby || HostRoom->bIsGameServerResetting)
+	{
+		return false;
+	}
 
 	int32 GuestCount = 0;
 	for (const FP48LobbyPlayerEntry& Entry : LobbyPlayers)
@@ -152,6 +161,10 @@ FText AP48LobbyGameState::GetRoomStatusText(int32 RoomId) const
 	if (Room->bIsReturningToLobby)
 	{
 		return FText::FromString(TEXT("Waiting for the game players to return"));
+	}
+	if (Room->bIsGameServerResetting)
+	{
+		return FText::FromString(TEXT("Waiting for the game server to reset"));
 	}
 	return Room->bHasGameServer
 		? FText::FromString(TEXT("Game in progress"))
