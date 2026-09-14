@@ -1,4 +1,4 @@
-﻿#include "P48PlayerCharacter.h"
+#include "P48PlayerCharacter.h"
 
 #include "Project48/GAS/P48GroggyAttributeSet.h"
 #include "Project48/DataTable/CharacterStatDataTypes.h"
@@ -19,12 +19,16 @@
 #include "Kismet/GameplayStatics.h"
 #include "Components/SphereComponent.h"
 #include "AbilitySystemBlueprintLibrary.h"
+#include "AbilitySystemComponent.h"
 #include "Engine/OverlapResult.h"
 #include "Net/UnrealNetwork.h"
+#include "DrawDebugHelpers.h"
+#include "TimerManager.h"
 
 AP48PlayerCharacter::AP48PlayerCharacter()
 {
-	PrimaryActorTick.bCanEverTick = false;
+	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = false;
 	
 	SpringArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("SpringArm"));
 	SpringArm->SetupAttachment(RootComponent);
@@ -54,6 +58,7 @@ AP48PlayerCharacter::AP48PlayerCharacter()
 	
 	GetMesh()->SetRelativeRotation(FRotator(0.f, -90.f, 0.f));
 	GetMesh()->SetRelativeLocation(FVector(0.f, 0.f, -65.f));
+	GetMesh()->bEnablePhysicsOnDedicatedServer = true;
 	
 	//GAS
 	AbilitySystemComponent = CreateDefaultSubobject<UAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
@@ -107,16 +112,73 @@ AP48PlayerCharacter::AP48PlayerCharacter()
 	NicknameWidgetComponent->SetupAttachment(RootComponent);
 	NicknameWidgetComponent->SetRelativeLocation(FVector(0.f, 0.f, 100.f));
 	NicknameWidgetComponent->SetUsingAbsoluteRotation(true);
+	
+	//Carry Settings
+	CarrySocketName = TEXT("handslot_r");
+	ThrowForwardSpeed = 1800.0f;
+	ThrowUpSpeed = 600.0f;
+	RagdollRecoverDuration = 1.5f;
+	bIsInThrownRagdoll = false;
+	CarriedForwardOffset = 15.0f;
+	CarriedRightOffset = 0.0f;
+	CarriedHeightOffset = -40.0f;
+	CarriedYawOffset = 0.0f;
+	bEnableCarriedRagdoll = true;
+	CarriedPhysicsBlendWeight = 0.6f;
+	CarriedPhysicsBoneName = TEXT("spine");
+	bEnableCarryDebug = true;
 }
 
 void AP48PlayerCharacter::Destroyed()
 {
-	if (HasAuthority() && Weapon)
+	if (HasAuthority())
 	{
-		Weapon->Destroy();
-		Weapon = nullptr;
+		if (Weapon)
+		{
+			Weapon->Destroy();
+			Weapon = nullptr;
+		}
+		if (CarriedCharacter)
+		{
+			Server_DropCharacter();
+		}
+		if (CarrierCharacter)
+		{
+			CarrierCharacter->Server_DropCharacter();
+		}
 	}
 	Super::Destroyed();
+}
+
+FName AP48PlayerCharacter::GetRagdollRootBoneName() const
+{
+	if (USkeletalMeshComponent* MeshComp = GetMesh())
+	{
+		if (MeshComp->DoesSocketExist(TEXT("hips")))
+		{
+			return TEXT("hips");
+		}
+		if (MeshComp->DoesSocketExist(TEXT("pelvis")))
+		{
+			return TEXT("pelvis");
+		}
+	}
+	return TEXT("hips");
+}
+
+void AP48PlayerCharacter::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+
+	if (bIsInThrownRagdoll)
+	{
+		if (USkeletalMeshComponent* MeshComp = GetMesh())
+		{
+			const FName RootBone = GetRagdollRootBoneName();
+			const FVector RootLoc = MeshComp->GetSocketLocation(RootBone);
+			SetActorLocation(RootLoc, false, nullptr, ETeleportType::TeleportPhysics);
+		}
+	}
 }
 
 void AP48PlayerCharacter::BeginPlay()
@@ -125,6 +187,7 @@ void AP48PlayerCharacter::BeginPlay()
 	
 	if (USkeletalMeshComponent* MeshComp = GetMesh())
 	{
+		MeshComp->bEnablePhysicsOnDedicatedServer = true;
 		MeshComp->SetPhysicsBlendWeight(0.5f);
 		
 		MeshComp->SetAllBodiesBelowSimulatePhysics(TEXT("spine"), true, true);
@@ -189,6 +252,8 @@ void AP48PlayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	
 	DOREPLIFETIME(AP48PlayerCharacter, Weapon);
+	DOREPLIFETIME(AP48PlayerCharacter, CarriedCharacter);
+	DOREPLIFETIME(AP48PlayerCharacter, CarrierCharacter);
 }
 
 void AP48PlayerCharacter::OnRep_PlayerState()
@@ -393,6 +458,12 @@ void AP48PlayerCharacter::AttackHandle()
 		return;
 	}
 	
+	// 캐릭터를 들고 있는 상태에서는 공격 불가
+	if (IsCarryingCharacter())
+	{
+		return;
+	}
+	
 	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
 	if (AnimInstance)
 	{
@@ -475,7 +546,7 @@ void AP48PlayerCharacter::OnRightHandOverlap(
 	bool bFromSweep, 
 	const FHitResult& SweepResult)
 {
-	if (!OtherActor || OtherActor == this)
+	if (!OtherActor || OtherActor == this || OtherActor == CarriedCharacter)
 	{
 		return;
 	}
@@ -518,6 +589,14 @@ void AP48PlayerCharacter::OnHit(const FVector& HitLocation, const FVector& HitDi
 	{
 		if (PS->IsAlive() && HasAuthority())
 		{
+			if (CarriedCharacter)
+			{
+				if (bEnableCarryDebug && GEngine)
+				{
+					GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor::Red, TEXT("[Carry Debug] 피격당해 들고 있던 캐릭터를 놓쳤습니다!"));
+				}
+				Server_DropCharacter();
+			}
 			Multicast_OnHit(HitLocation, Impulse);
 		}
 	}
@@ -714,6 +793,22 @@ void AP48PlayerCharacter::OnStunTagChanged(const struct FGameplayTag CallbackTag
 	
 	if (HasAuthority())
 	{
+		if (bIsStunned && CarriedCharacter)
+		{
+			if (bEnableCarryDebug && GEngine)
+			{
+				GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor::Yellow, TEXT("[Carry Debug] 스턴으로 인해 들고 있던 캐릭터를 놓쳤습니다!"));
+			}
+			Server_DropCharacter();
+		}
+		if (!bIsStunned && CarrierCharacter)
+		{
+			if (bEnableCarryDebug && GEngine)
+			{
+				GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor::Cyan, TEXT("[Carry Debug] 스턴이 해제되었으나 계속 들려있는 상태를 유지합니다!"));
+			}
+		}
+
 		FRotator LookAtRotation = FRotator::ZeroRotator;
 		
 		if (bIsStunned && !LastHitDirection.IsNearlyZero())
@@ -750,17 +845,40 @@ void AP48PlayerCharacter::OnStunTagChanged(const struct FGameplayTag CallbackTag
 		}	
 		else
 		{
-			MoveComp->SetMovementMode(MOVE_Walking);
-			
-			if (USkeletalMeshComponent* MeshComp = GetMesh())
+			// 현재 상대방에게 들려있는 상태라면 워킹 모드로 전환하지 않고 들린 상태 유지
+			if (IsBeingCarried())
 			{
-				MeshComp->SetAllBodiesBelowSimulatePhysics(TEXT("spine"), true, true);
-				MeshComp->SetPhysicsBlendWeight(0.5f);
+				MoveComp->DisableMovement();
+				if (USkeletalMeshComponent* MeshComp = GetMesh())
+				{
+					if (bEnableCarriedRagdoll)
+					{
+						MeshComp->SetPhysicsBlendWeight(CarriedPhysicsBlendWeight);
+					}
+					else
+					{
+						MeshComp->SetPhysicsBlendWeight(0.0f);
+					}
+				}
+				if (GEngine)
+				{
+					GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Cyan, TEXT("MoveMode: Disable (Being Carried)"));
+				}
 			}
-			
-			if (GEngine)
+			else
 			{
-				GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Yellow, TEXT("MoveMode: MOVE_Walking"));
+				MoveComp->SetMovementMode(MOVE_Walking);
+				
+				if (USkeletalMeshComponent* MeshComp = GetMesh())
+				{
+					MeshComp->SetAllBodiesBelowSimulatePhysics(TEXT("spine"), true, true);
+					MeshComp->SetPhysicsBlendWeight(0.5f);
+				}
+				
+				if (GEngine)
+				{
+					GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Yellow, TEXT("MoveMode: MOVE_Walking"));
+				}
 			}
 		}
 	}
@@ -773,6 +891,21 @@ void AP48PlayerCharacter::EquipWeaponHandle()
 		return;
 	}
 	
+	// 이미 캐릭터를 들고 있다면 내려놓기(Drop) 대신 던지기(Throw) 수행
+	if (CarriedCharacter)
+	{
+		if (bEnableCarryDebug && GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Yellow, TEXT("[Carry Debug] 들고 있던 캐릭터를 던집니다."));
+		}
+		if (ThrowMontage)
+		{
+			PlayAnimMontage(ThrowMontage);
+		}
+		Server_ThrowCharacter();
+		return;
+	}
+
 	AP48PlayerState* PS = GetPlayerState<AP48PlayerState>();
 	if (!PS)
 	{
@@ -795,30 +928,86 @@ void AP48PlayerCharacter::EquipWeaponHandle()
 	GetWorld()->OverlapMultiByObjectType(Overlaps, Center, FQuat::Identity, ObjectParams, Sphere);
 	
 	AP48WeaponBase* ClosestWeapon = nullptr;
+	AP48PlayerCharacter* ClosestStunnedEnemy = nullptr;
 	
-	float MinDist = MAX_FLT;
+	float MinWeaponDist = MAX_FLT;
+	float MinEnemyDist = MAX_FLT;
+
+	const FGameplayTag StunTag = FGameplayTag::RequestGameplayTag(FName("State.Stunned"));
 	
 	for (const FOverlapResult& Overlap : Overlaps)
 	{
-		if (AP48WeaponBase* FoundWeapon = Cast<AP48WeaponBase>(Overlap.GetActor()))
+		AActor* OverlapActor = Overlap.GetActor();
+		if (!OverlapActor || OverlapActor == this)
+		{
+			continue;
+		}
+
+		if (AP48WeaponBase* FoundWeapon = Cast<AP48WeaponBase>(OverlapActor))
 		{
 			if (FoundWeapon->GetOwner() == nullptr)
 			{
 				const float Dist = FVector::DistSquared(Center, FoundWeapon->GetActorLocation());
 				
-				if (Dist < MinDist)
+				if (Dist < MinWeaponDist)
 				{
-					MinDist = Dist;
+					MinWeaponDist = Dist;
 					ClosestWeapon = FoundWeapon;
+				}
+			}
+		}
+		else if (AP48PlayerCharacter* TargetChar = Cast<AP48PlayerCharacter>(OverlapActor))
+		{
+			if (TargetChar->IsAlive() && !TargetChar->IsBeingCarried())
+			{
+				if (UAbilitySystemComponent* TargetASC = TargetChar->GetAbilitySystemComponent())
+				{
+					if (TargetASC->HasMatchingGameplayTag(StunTag))
+					{
+						const float Dist = FVector::DistSquared(Center, TargetChar->GetActorLocation());
+						if (Dist < MinEnemyDist)
+						{
+							MinEnemyDist = Dist;
+							ClosestStunnedEnemy = TargetChar;
+						}
+					}
 				}
 			}
 		}
 	}
 	
-	if (ClosestWeapon)
+	if (bEnableCarryDebug)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Client]: 발견: %s -> Server_EquipWeapon호출"), *ClosestWeapon->GetName());
+		const FColor SphereColor = (ClosestStunnedEnemy || ClosestWeapon) ? FColor::Green : FColor::Cyan;
+		DrawDebugSphere(GetWorld(), Center, SearchRadius, 16, SphereColor, false, 1.5f, 0, 1.5f);
+	}
+
+	if (ClosestStunnedEnemy && (MinEnemyDist < MinWeaponDist || !ClosestWeapon))
+	{
+		if (bEnableCarryDebug && GEngine)
+		{
+			const FString Msg = FString::Printf(TEXT("[Carry Debug] 스턴 적 감지 성공: %s (거리: %.1f)"), *ClosestStunnedEnemy->GetName(), FMath::Sqrt(MinEnemyDist));
+			GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor::Green, Msg);
+		}
+		UE_LOG(LogTemp, Warning, TEXT("[Client]: 스턴 적 발견: %s -> Server_PickUpCharacter 호출"), *ClosestStunnedEnemy->GetName());
+		Server_PickUpCharacter(ClosestStunnedEnemy);
+	}
+	else if (ClosestWeapon)
+	{
+		if (bEnableCarryDebug && GEngine)
+		{
+			const FString Msg = FString::Printf(TEXT("[Carry Debug] 무기 감지 성공: %s (거리: %.1f)"), *ClosestWeapon->GetName(), FMath::Sqrt(MinWeaponDist));
+			GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor::Cyan, Msg);
+		}
+		UE_LOG(LogTemp, Warning, TEXT("[Client]: 무기 발견: %s -> Server_EquipWeapon호출"), *ClosestWeapon->GetName());
 		Server_EquipWeapon(ClosestWeapon);
+	}
+	else
+	{
+		if (bEnableCarryDebug && GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor::Silver, TEXT("[Carry Debug] 탐색 반경(150) 내에 무기나 스턴 적이 없습니다."));
+		}
 	}
 }
 
@@ -930,6 +1119,19 @@ void AP48PlayerCharacter::Death()
 		return;
 	}
 	
+	if (CarriedCharacter)
+	{
+		Server_DropCharacter();
+	}
+	if (CarrierCharacter)
+	{
+		CarrierCharacter->Server_DropCharacter();
+	}
+
+	GetWorld()->GetTimerManager().ClearTimer(RagdollRecoverTimerHandle);
+	bIsInThrownRagdoll = false;
+	SetActorTickEnabled(false);
+
 	AP48PlayerState* PS = GetPlayerState<AP48PlayerState>();
 	
 	if (!PS)
@@ -944,6 +1146,9 @@ void AP48PlayerCharacter::Death()
 
 void AP48PlayerCharacter::Multicast_DeathRagDoll_Implementation()
 {
+	bIsInThrownRagdoll = false;
+	SetActorTickEnabled(false);
+
 	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
 	{
 		MoveComp->StopMovementImmediately();
@@ -978,4 +1183,588 @@ void AP48PlayerCharacter::Multicast_DeathRagDoll_Implementation()
 	}
 	
 	UE_LOG(LogTemp, Warning, TEXT("[%s] Multi_DeathRagDoll: 순수 래그돌 연출 완료 "), *GetName());
+}
+
+bool AP48PlayerCharacter::IsAlive() const
+{
+	if (const AP48PlayerState* PS = GetPlayerState<AP48PlayerState>())
+	{
+		return PS->IsAlive();
+	}
+	return false;
+}
+
+void AP48PlayerCharacter::Server_PickUpCharacter_Implementation(AP48PlayerCharacter* TargetCharacter)
+{
+	if (!HasAuthority() || !TargetCharacter || TargetCharacter == this)
+	{
+		return;
+	}
+
+	AP48PlayerState* PS = GetPlayerState<AP48PlayerState>();
+	if (!PS || PS->HasWeapon() || bEquipWeapon || CarriedCharacter)
+	{
+		return;
+	}
+
+	if (!TargetCharacter->IsAlive() || TargetCharacter->IsBeingCarried() || TargetCharacter->bIsInThrownRagdoll)
+	{
+		return;
+	}
+
+	const FGameplayTag StunTag = FGameplayTag::RequestGameplayTag(FName("State.Stunned"));
+	UAbilitySystemComponent* TargetASC = TargetCharacter->GetAbilitySystemComponent();
+	if (!TargetASC || !TargetASC->HasMatchingGameplayTag(StunTag))
+	{
+		return;
+	}
+
+	// 타겟이 무기를 들고 있었다면 떨어뜨리도록 처리
+	if (TargetCharacter->Weapon)
+	{
+		TargetCharacter->Server_DropWeapon();
+	}
+
+	CarriedCharacter = TargetCharacter;
+	TargetCharacter->CarrierCharacter = this;
+
+	OnRep_CarriedCharacter();
+	TargetCharacter->OnRep_CarrierCharacter();
+
+	TargetCharacter->OnPickedUpBy(this);
+
+	if (bEnableCarryDebug && GEngine)
+	{
+		const FString Msg = FString::Printf(TEXT("[Server]: %s -> %s 오른손(handslot_r) 들기 성공"), *GetName(), *TargetCharacter->GetName());
+		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Emerald, Msg);
+	}
+	UE_LOG(LogTemp, Warning, TEXT("[Server] %s가 %s를 오른손에 들었습니다."), *GetName(), *TargetCharacter->GetName());
+}
+
+void AP48PlayerCharacter::Server_ThrowCharacter_Implementation()
+{
+	if (!HasAuthority() || !CarriedCharacter)
+	{
+		return;
+	}
+
+	AP48PlayerCharacter* ThrowTarget = CarriedCharacter;
+	CarriedCharacter = nullptr;
+	ThrowTarget->CarrierCharacter = nullptr;
+
+	OnRep_CarriedCharacter();
+
+	const float ActualForwardSpeed = ThrowForwardSpeed > 0.0f ? ThrowForwardSpeed : 1800.0f;
+	const float ActualUpSpeed = ThrowUpSpeed > 0.0f ? ThrowUpSpeed : 600.0f;
+
+	const FVector Forward = GetActorForwardVector();
+	const FVector Up = FVector::UpVector;
+	const FVector ThrowVelocity = (Forward * ActualForwardSpeed) + (Up * ActualUpSpeed);
+
+	// 던져지는 타겟이 캐리어의 캡슐이나 바닥과 겹쳐서 속도가 0으로 초기화되는 현상 방지:
+	// 캐리어 전방 100cm, 지면 위 40cm 여유 공간의 안전한 공중 릴리즈 위치 계산
+	const FVector SafeReleaseLocation = GetActorLocation() + (Forward * 100.0f) + FVector(0.f, 0.f, 40.0f);
+	const FRotator SafeReleaseRotation = FRotator(0.0f, GetActorRotation().Yaw, 0.0f);
+
+	if (bEnableCarryDebug)
+	{
+		DrawDebugDirectionalArrow(GetWorld(), SafeReleaseLocation, SafeReleaseLocation + ThrowVelocity.GetSafeNormal() * 200.f, 40.0f, FColor::Red, false, 2.5f, 0, 3.0f);
+		if (GEngine)
+		{
+			const FString Msg = FString::Printf(TEXT("[Server]: %s -> %s 래그돌 던지기 발동 (속도: %.1f)"), *GetName(), *ThrowTarget->GetName(), ThrowVelocity.Size());
+			GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, Msg);
+		}
+	}
+
+	// 1. 모든 클라이언트에 풀 래그돌 상태로 던지기 실행
+	ThrowTarget->Multicast_OnThrown(SafeReleaseLocation, SafeReleaseRotation, ThrowVelocity, this);
+
+	Multicast_PlayThrowMontage();
+
+	// 2. 약 1~2초 동안 날아가고 바닥에 구른 뒤 다시 일어나도록 서버 타이머 등록
+	const float RecoverTime = RagdollRecoverDuration > 0.0f ? RagdollRecoverDuration : 1.5f;
+	GetWorld()->GetTimerManager().ClearTimer(ThrowTarget->RagdollRecoverTimerHandle);
+
+	TWeakObjectPtr<AP48PlayerCharacter> WeakTarget = ThrowTarget;
+	GetWorld()->GetTimerManager().SetTimer(ThrowTarget->RagdollRecoverTimerHandle, [WeakTarget]()
+	{
+		if (WeakTarget.IsValid() && WeakTarget->HasAuthority())
+		{
+			WeakTarget->Server_RecoverFromRagdoll();
+		}
+	}, RecoverTime, false);
+
+	UE_LOG(LogTemp, Warning, TEXT("[Server] %s가 %s를 래그돌로 던졌습니다. 속도: %s"), *GetName(), *ThrowTarget->GetName(), *ThrowVelocity.ToString());
+}
+
+void AP48PlayerCharacter::Server_DropCharacter_Implementation()
+{
+	if (!HasAuthority() || !CarriedCharacter)
+	{
+		return;
+	}
+
+	AP48PlayerCharacter* DroppedTarget = CarriedCharacter;
+	CarriedCharacter = nullptr;
+	DroppedTarget->CarrierCharacter = nullptr;
+
+	OnRep_CarriedCharacter();
+
+	const FVector Forward = GetActorForwardVector();
+	const FVector SafeDropLocation = GetActorLocation() + (Forward * 75.0f);
+	const FRotator SafeDropRotation = FRotator(0.0f, GetActorRotation().Yaw, 0.0f);
+
+	if (bEnableCarryDebug && GEngine)
+	{
+		const FString Msg = FString::Printf(TEXT("[Server]: %s -> %s 내려놓기"), *GetName(), *DroppedTarget->GetName());
+		GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor::Yellow, Msg);
+	}
+
+	DroppedTarget->Multicast_OnDropped(SafeDropLocation, SafeDropRotation, this);
+
+	UE_LOG(LogTemp, Warning, TEXT("[Server] %s가 %s를 내려놓았습니다."), *GetName(), *DroppedTarget->GetName());
+}
+
+void AP48PlayerCharacter::OnRep_CarriedCharacter()
+{
+}
+
+void AP48PlayerCharacter::OnRep_CarrierCharacter()
+{
+	if (CarrierCharacter)
+	{
+		if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+		{
+			MoveComp->StopMovementImmediately();
+			MoveComp->DisableMovement();
+		}
+
+		if (UCapsuleComponent* CapsuleComp = GetCapsuleComponent())
+		{
+			CapsuleComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		}
+
+		if (USkeletalMeshComponent* MeshComp = GetMesh())
+		{
+			MeshComp->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+			MeshComp->SetCollisionResponseToChannel(ECC_PhysicsBody, ECR_Ignore);
+
+			if (bEnableCarriedRagdoll)
+			{
+				MeshComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+
+				// 루트 본은 최상위 본이므로 시뮬레이션 시 캡슐과 이탈해 덜덜 떨리는 현상 방지.
+				// spine(상체)과 다리를 시뮬레이션하여 루트는 손에 고정된 채 자연스럽게 흔들리도록 함.
+				const FName RootBone = GetRagdollRootBoneName();
+				MeshComp->SetAllBodiesBelowSimulatePhysics(RootBone, false, false);
+				if (FBodyInstance* RootBody = MeshComp->GetBodyInstance(RootBone))
+				{
+					RootBody->SetInstanceSimulatePhysics(false);
+				}
+
+				MeshComp->SetAllBodiesBelowSimulatePhysics(CarriedPhysicsBoneName, true, true);
+
+				if (MeshComp->GetPhysicsAsset())
+				{
+					if (MeshComp->GetBodyInstance(TEXT("upperleg_l")))
+					{
+						MeshComp->SetAllBodiesBelowSimulatePhysics(TEXT("upperleg_l"), true, true);
+					}
+					else if (MeshComp->GetBodyInstance(TEXT("thigh_l")))
+					{
+						MeshComp->SetAllBodiesBelowSimulatePhysics(TEXT("thigh_l"), true, true);
+					}
+
+					if (MeshComp->GetBodyInstance(TEXT("upperleg_r")))
+					{
+						MeshComp->SetAllBodiesBelowSimulatePhysics(TEXT("upperleg_r"), true, true);
+					}
+					else if (MeshComp->GetBodyInstance(TEXT("thigh_r")))
+					{
+						MeshComp->SetAllBodiesBelowSimulatePhysics(TEXT("thigh_r"), true, true);
+					}
+				}
+
+				MeshComp->bBlendPhysics = true;
+				MeshComp->SetPhysicsBlendWeight(CarriedPhysicsBlendWeight);
+				MeshComp->WakeAllRigidBodies();
+			}
+			else
+			{
+				MeshComp->SetPhysicsBlendWeight(0.0f);
+			}
+		}
+
+		FName SocketToUse = CarrySocketName;
+		if (CarrierCharacter->GetMesh())
+		{
+			if (!CarrierCharacter->GetMesh()->DoesSocketExist(SocketToUse))
+			{
+				if (CarrierCharacter->GetMesh()->DoesSocketExist(TEXT("weaponslot_r")))
+				{
+					SocketToUse = TEXT("weaponslot_r");
+				}
+				else if (CarrierCharacter->GetMesh()->DoesSocketExist(TEXT("hand_r")))
+				{
+					SocketToUse = TEXT("hand_r");
+				}
+			}
+		}
+
+		// 1. 소켓의 현재 월드 위치 가져오기
+		const FVector SocketWorldLocation = CarrierCharacter->GetMesh()->GetSocketLocation(SocketToUse);
+		
+		// 2. 캐리어 방향 기준으로 직관적인 월드 위치 계산 (전방/우측/높이 오프셋)
+		const FVector CarrierForward = CarrierCharacter->GetActorForwardVector();
+		const FVector CarrierRight = CarrierCharacter->GetActorRightVector();
+		const FVector TargetWorldLocation = SocketWorldLocation 
+			+ (CarrierForward * CarriedForwardOffset) 
+			+ (CarrierRight * CarriedRightOffset) 
+			+ FVector(0.f, 0.f, CarriedHeightOffset);
+
+		// 3. 캐리어의 Yaw 회전각에 맞추어 똑바로 선(Upright: Pitch=0, Roll=0) 월드 회전 계산
+		const FRotator TargetWorldRotation = FRotator(0.0f, CarrierCharacter->GetActorRotation().Yaw + CarriedYawOffset, 0.0f);
+
+		// 4. 먼저 올바른 위치와 회전으로 이동시킨 뒤, 월드 트랜스폼을 유지(KeepWorldTransform)하며 소켓에 부착
+		SetActorLocationAndRotation(TargetWorldLocation, TargetWorldRotation);
+		AttachToComponent(CarrierCharacter->GetMesh(), FAttachmentTransformRules::KeepWorldTransform, SocketToUse);
+
+		if (bEnableCarryDebug && GEngine)
+		{
+			const FString Msg = FString::Printf(TEXT("[%s] %s의 [%s] 소켓에 부착 완료! (Ragdoll: %.2f)"), 
+				*GetName(), *CarrierCharacter->GetName(), *SocketToUse.ToString(), bEnableCarriedRagdoll ? CarriedPhysicsBlendWeight : 0.0f);
+			GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Green, Msg);
+			DrawDebugCoordinateSystem(GetWorld(), TargetWorldLocation, TargetWorldRotation, 40.0f, false, 3.0f);
+		}
+	}
+	else
+	{
+		DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+
+		if (UCapsuleComponent* CapsuleComp = GetCapsuleComponent())
+		{
+			CapsuleComp->SetCollisionProfileName(TEXT("Pawn"));
+			CapsuleComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+		}
+
+		if (USkeletalMeshComponent* MeshComp = GetMesh())
+		{
+			MeshComp->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+			MeshComp->SetCollisionResponseToChannel(ECC_PhysicsBody, ECR_Block);
+
+			const FName RootBone = GetRagdollRootBoneName();
+			MeshComp->SetAllBodiesBelowSimulatePhysics(RootBone, false, false);
+			MeshComp->SetAllBodiesBelowSimulatePhysics(CarriedPhysicsBoneName, true, true);
+			MeshComp->bBlendPhysics = true;
+			MeshComp->SetPhysicsBlendWeight(0.5f);
+		}
+
+		if (bEnableCarryDebug && GEngine)
+		{
+			const FString Msg = FString::Printf(TEXT("[%s] Carrier로부터 분리(Detach) 완료"), *GetName());
+			GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor::Orange, Msg);
+		}
+	}
+}
+
+void AP48PlayerCharacter::OnPickedUpBy(AP48PlayerCharacter* InCarrier)
+{
+	OnRep_CarrierCharacter();
+}
+
+void AP48PlayerCharacter::OnThrown(const FVector& ReleaseLocation, const FRotator& ReleaseRotation, const FVector& ThrowVelocity, AP48PlayerCharacter* InCarrier)
+{
+	Multicast_OnThrown(ReleaseLocation, ReleaseRotation, ThrowVelocity, InCarrier);
+}
+
+void AP48PlayerCharacter::OnDroppedFromCarrier(const FVector& DropLocation, const FRotator& DropRotation, AP48PlayerCharacter* InCarrier)
+{
+	Multicast_OnDropped(DropLocation, DropRotation, InCarrier);
+}
+
+void AP48PlayerCharacter::Multicast_OnThrown_Implementation(const FVector& ReleaseLocation, const FRotator& ReleaseRotation, const FVector& ThrowVelocity, AP48PlayerCharacter* InCarrier)
+{
+	CarrierCharacter = nullptr;
+	DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+
+	// 1. 발사 위치로 이동
+	SetActorLocationAndRotation(ReleaseLocation, ReleaseRotation, false, nullptr, ETeleportType::TeleportPhysics);
+
+	// 2. 네트워크 무브먼트 복제 일시 해제 (비행 중 캡슐이 메시를 제자리로 강제 롤백하지 못하도록 차단)
+	SetReplicateMovement(false);
+
+	// 3. 캡슐 콜리전 해제
+	if (UCapsuleComponent* CapsuleComp = GetCapsuleComponent())
+	{
+		CapsuleComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		CapsuleComp->SetCollisionResponseToAllChannels(ECR_Ignore);
+	}
+
+	// 4. 무브먼트 컴포넌트 완전 비활성화
+	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+	{
+		MoveComp->StopMovementImmediately();
+		MoveComp->DisableMovement();
+		MoveComp->Deactivate();
+	}
+
+	// 5. 플레이어 입력 차단
+	SetInputBlocked(true);
+
+	// 6. 스켈레탈 메시를 캡슐로부터 완전히 분리하여 독립된 순수 물리 인형화
+	if (USkeletalMeshComponent* MeshComp = GetMesh())
+	{
+		if (UAnimInstance* AnimInstance = MeshComp->GetAnimInstance())
+		{
+			AnimInstance->StopAllMontages(0.0f);
+		}
+
+		MeshComp->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
+
+		MeshComp->SetCollisionProfileName(TEXT("Ragdoll"));
+		MeshComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+
+		// 던지는 플레이어(캐리어)나 다른 폰의 캡슐과 공중에서 부딪쳐 멈추지 않도록 비행 중에는 Pawn 채널 무시
+		MeshComp->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+
+		if (InCarrier)
+		{
+			MeshComp->IgnoreActorWhenMoving(InCarrier, true);
+		}
+
+		MeshComp->bEnablePhysicsOnDedicatedServer = true;
+
+		// 모든 물리 바디(루트 본 hips 포함)를 강제로 시뮬레이션 가능하게 설정
+		for (FBodyInstance* BodyInst : MeshComp->Bodies)
+		{
+			if (BodyInst)
+			{
+				BodyInst->SetInstanceSimulatePhysics(true);
+			}
+		}
+
+		// 전신 물리 시뮬레이션 활성화
+		MeshComp->SetAllBodiesSimulatePhysics(true);
+		MeshComp->SetSimulatePhysics(true);
+		MeshComp->bBlendPhysics = false;
+		MeshComp->SetPhysicsBlendWeight(1.0f);
+
+		MeshComp->WakeAllRigidBodies();
+
+		// 파티 애니멀즈 스타일 물리 속도 및 공중 텀블링 회전각 부여
+		MeshComp->SetAllPhysicsLinearVelocity(ThrowVelocity);
+		const FName RootBone = GetRagdollRootBoneName();
+		MeshComp->SetPhysicsAngularVelocityInDegrees(FVector(FMath::RandRange(-80.f, 80.f), 350.0f, FMath::RandRange(-50.f, 50.f)), false, RootBone);
+	}
+
+	// 7. 래그돌 비행 추적 활성화 (카메라가 날아가는 래그돌 골반을 실시간 추적)
+	bIsInThrownRagdoll = true;
+	SetActorTickEnabled(true);
+
+	if (bEnableCarryDebug && GEngine)
+	{
+		const FString Msg = FString::Printf(TEXT("[%s] 파티 애니멀즈 풀 래그돌 비행 시작! (속도: %s)"), *GetName(), *ThrowVelocity.ToString());
+		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, Msg);
+	}
+}
+
+void AP48PlayerCharacter::Server_RecoverFromRagdoll()
+{
+	if (!HasAuthority() || !IsAlive())
+	{
+		return;
+	}
+
+	GetWorld()->GetTimerManager().ClearTimer(RagdollRecoverTimerHandle);
+
+	const FName RootBone = GetRagdollRootBoneName();
+	FVector RootLoc = GetActorLocation();
+	if (USkeletalMeshComponent* MeshComp = GetMesh())
+	{
+		RootLoc = MeshComp->GetSocketLocation(RootBone);
+	}
+
+	FHitResult GroundHit;
+	FCollisionQueryParams QueryParams;
+	QueryParams.AddIgnoredActor(this);
+	if (CarrierCharacter)
+	{
+		QueryParams.AddIgnoredActor(CarrierCharacter);
+	}
+
+	const FVector TraceStart = RootLoc + FVector(0.f, 0.f, 50.f);
+	const FVector TraceEnd = RootLoc - FVector(0.f, 0.f, 500.f);
+
+	float CapsuleHalfHeight = 65.0f;
+	if (UCapsuleComponent* CapsuleComp = GetCapsuleComponent())
+	{
+		CapsuleHalfHeight = CapsuleComp->GetScaledCapsuleHalfHeight();
+	}
+
+	FVector StandLocation = RootLoc;
+	if (GetWorld()->LineTraceSingleByChannel(GroundHit, TraceStart, TraceEnd, ECC_WorldStatic, QueryParams))
+	{
+		StandLocation = GroundHit.ImpactPoint + FVector(0.f, 0.f, CapsuleHalfHeight + 2.0f);
+	}
+	else
+	{
+		StandLocation = RootLoc + FVector(0.f, 0.f, CapsuleHalfHeight);
+	}
+
+	const FRotator StandRotation = FRotator(0.0f, GetActorRotation().Yaw, 0.0f);
+
+	Multicast_RecoverFromRagdoll(StandLocation, StandRotation);
+}
+
+void AP48PlayerCharacter::Multicast_RecoverFromRagdoll_Implementation(const FVector& StandLocation, const FRotator& StandRotation)
+{
+	bIsInThrownRagdoll = false;
+	SetActorTickEnabled(false);
+
+	SetActorLocationAndRotation(StandLocation, StandRotation, false, nullptr, ETeleportType::TeleportPhysics);
+
+	// 1. 스켈레탈 메시 물리 시뮬레이션 해제 및 캡슐에 다시 장착
+	if (USkeletalMeshComponent* MeshComp = GetMesh())
+	{
+		MeshComp->SetSimulatePhysics(false);
+		MeshComp->SetAllBodiesSimulatePhysics(false);
+		for (FBodyInstance* BodyInst : MeshComp->Bodies)
+		{
+			if (BodyInst)
+			{
+				BodyInst->SetInstanceSimulatePhysics(false);
+			}
+		}
+
+		MeshComp->AttachToComponent(GetCapsuleComponent(), FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+		MeshComp->SetRelativeLocation(FVector(0.f, 0.f, -65.f));
+		MeshComp->SetRelativeRotation(FRotator(0.f, -90.f, 0.f));
+		MeshComp->SetCollisionProfileName(TEXT("CharacterMesh"));
+		MeshComp->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+
+		const FName RootBone = GetRagdollRootBoneName();
+		MeshComp->SetAllBodiesBelowSimulatePhysics(RootBone, false, false);
+		MeshComp->SetAllBodiesBelowSimulatePhysics(CarriedPhysicsBoneName, true, true);
+		MeshComp->bBlendPhysics = true;
+		MeshComp->SetPhysicsBlendWeight(0.5f);
+		MeshComp->WakeAllRigidBodies();
+	}
+
+	// 2. 캡슐 콜리전 정상 복원
+	if (UCapsuleComponent* CapsuleComp = GetCapsuleComponent())
+	{
+		CapsuleComp->SetCollisionProfileName(TEXT("Pawn"));
+		CapsuleComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+		CapsuleComp->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+	}
+
+	// 3. 네트워크 이동 복제 복원
+	SetReplicateMovement(true);
+
+	// 4. 무브먼트 컴포넌트 재활성화 및 이동 모드/스턴 판정
+	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+	{
+		MoveComp->Activate();
+		MoveComp->Velocity = FVector::ZeroVector;
+
+		const FGameplayTag StunTag = FGameplayTag::RequestGameplayTag(FName("State.Stunned"));
+		if (AbilitySystemComponent && AbilitySystemComponent->HasMatchingGameplayTag(StunTag))
+		{
+			MoveComp->DisableMovement();
+			if (StunMontage)
+			{
+				PlayAnimMontage(StunMontage);
+			}
+		}
+		else
+		{
+			MoveComp->SetMovementMode(MOVE_Walking);
+			SetInputBlocked(false);
+		}
+	}
+
+	// 5. 기상 몽타주가 있다면 재생
+	if (GetUpMontage)
+	{
+		PlayAnimMontage(GetUpMontage);
+	}
+
+	if (bEnableCarryDebug && GEngine)
+	{
+		const FString Msg = FString::Printf(TEXT("[%s] 래그돌에서 회복하여 다시 일어남!"), *GetName());
+		GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor::Green, Msg);
+	}
+}
+
+void AP48PlayerCharacter::Multicast_OnDropped_Implementation(const FVector& DropLocation, const FRotator& DropRotation, AP48PlayerCharacter* InCarrier)
+{
+	CarrierCharacter = nullptr;
+	DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+
+	SetActorLocationAndRotation(DropLocation, DropRotation, false, nullptr, ETeleportType::TeleportPhysics);
+
+	if (UCapsuleComponent* CapsuleComp = GetCapsuleComponent())
+	{
+		CapsuleComp->SetCollisionProfileName(TEXT("Pawn"));
+		CapsuleComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	}
+
+	if (USkeletalMeshComponent* MeshComp = GetMesh())
+	{
+		MeshComp->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+		MeshComp->SetCollisionResponseToChannel(ECC_PhysicsBody, ECR_Block);
+
+		const FName RootBone = GetRagdollRootBoneName();
+		MeshComp->SetAllBodiesBelowSimulatePhysics(RootBone, false, false);
+		MeshComp->SetAllBodiesBelowSimulatePhysics(CarriedPhysicsBoneName, true, true);
+		MeshComp->bBlendPhysics = true;
+		MeshComp->SetPhysicsBlendWeight(0.5f);
+		MeshComp->WakeAllRigidBodies();
+	}
+
+	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+	{
+		const FGameplayTag StunTag = FGameplayTag::RequestGameplayTag(FName("State.Stunned"));
+		if (AbilitySystemComponent && AbilitySystemComponent->HasMatchingGameplayTag(StunTag))
+		{
+			MoveComp->DisableMovement();
+		}
+		else
+		{
+			MoveComp->SetMovementMode(MOVE_Walking);
+			SetInputBlocked(false);
+		}
+	}
+
+	if (bEnableCarryDebug && GEngine)
+	{
+		const FString Msg = FString::Printf(TEXT("[%s] 바닥에 내려놓아짐"), *GetName());
+		GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor::Yellow, Msg);
+	}
+}
+
+void AP48PlayerCharacter::Multicast_PlayThrowMontage_Implementation()
+{
+	if (IsLocallyControlled())
+	{
+		return;
+	}
+	if (ThrowMontage)
+	{
+		PlayAnimMontage(ThrowMontage);
+	}
+}
+
+void AP48PlayerCharacter::Landed(const FHitResult& Hit)
+{
+	Super::Landed(Hit);
+
+	const FGameplayTag StunTag = FGameplayTag::RequestGameplayTag(FName("State.Stunned"));
+	if (AbilitySystemComponent && AbilitySystemComponent->HasMatchingGameplayTag(StunTag))
+	{
+		if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+		{
+			MoveComp->DisableMovement();
+		}
+	}
 }
