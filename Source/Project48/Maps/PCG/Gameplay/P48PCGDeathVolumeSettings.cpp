@@ -1,6 +1,7 @@
 #include "P48PCGDeathVolumeSettings.h"
 
 #include "../Common/P48PCGSeedHelpers.h"
+#include "../../Objects/Gameplay/P48DeathFloor.h"
 #include "Data/PCGPointData.h"
 #include "Data/PCGSpatialData.h"
 #include "Engine/World.h"
@@ -8,13 +9,6 @@
 #include "PCGContext.h"
 
 #define LOCTEXT_NAMESPACE "P48PCGDeathVolumeSettings"
-
-namespace P48DeathVolume
-{
-	// AP48DeathFloor의 기본 Box 전체 크기와 일치합니다.
-	constexpr float BaseBoxSize = 100.0f;
-	constexpr float BaseBoxExtent = BaseBoxSize * 0.5f;
-}
 
 #if WITH_EDITOR
 FText UP48PCGDeathVolumeSettings::GetDefaultNodeTitle() const
@@ -24,7 +18,7 @@ FText UP48PCGDeathVolumeSettings::GetDefaultNodeTitle() const
 
 FText UP48PCGDeathVolumeSettings::GetNodeTooltipText() const
 {
-	return LOCTEXT("Tooltip", "Creates one Spawn Actor point sized to the input spatial XY bounds, with its top placed at the configured world Z height.");
+	return LOCTEXT("Tooltip", "Creates one Spawn Actor point below the input spatial bounds for player death overlap detection.");
 }
 #endif
 
@@ -93,24 +87,26 @@ bool FP48PCGDeathVolumeElement::ExecuteInternal(FPCGContext* Context) const
 	const float CoverageScale = FMath::Max(1.0f, Rules.CoverageScale);
 	const float Padding = FMath::Max(0.0f, Rules.HorizontalPadding);
 	const float VolumeDepth = FMath::Max(1.0f, Rules.Depth);
+	const FVector2D MinimumHorizontalSize = Rules.MinimumHorizontalSize.GetAbs();
 	const FVector BoundsSize = CombinedBounds.GetSize();
 	const FVector VolumeSize(
-		FMath::Max(1.0f, BoundsSize.X * CoverageScale + Padding * 2.0f),
-		FMath::Max(1.0f, BoundsSize.Y * CoverageScale + Padding * 2.0f),
+		FMath::Max(MinimumHorizontalSize.X, BoundsSize.X * CoverageScale + Padding * 2.0f),
+		FMath::Max(MinimumHorizontalSize.Y, BoundsSize.Y * CoverageScale + Padding * 2.0f),
 		VolumeDepth);
 	const FVector VolumeCenter(
 		CombinedBounds.GetCenter().X,
 		CombinedBounds.GetCenter().Y,
-		Rules.DeathZ - VolumeDepth * 0.5f);
+		CombinedBounds.Min.Z - VolumeDepth * 0.5f);
+	const FVector BaseBoxSize = AP48DeathFloor::DefaultCollisionExtent * 2.0f;
 
 	FPCGPoint Point;
 	Point.Transform = FTransform(
 		FQuat::Identity,
 		VolumeCenter,
-		VolumeSize / P48DeathVolume::BaseBoxSize);
+		VolumeSize / BaseBoxSize);
 	Point.Density = 1.0f;
-	Point.BoundsMin = FVector(-P48DeathVolume::BaseBoxExtent);
-	Point.BoundsMax = FVector(P48DeathVolume::BaseBoxExtent);
+	Point.BoundsMin = -AP48DeathFloor::DefaultCollisionExtent;
+	Point.BoundsMax = AP48DeathFloor::DefaultCollisionExtent;
 	Point.Steepness = 1.0f;
 	Point.Seed = PCGHelpers::ComputeSeed(
 		P48ReadNetworkSeed(Context),
