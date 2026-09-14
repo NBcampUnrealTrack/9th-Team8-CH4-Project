@@ -43,6 +43,8 @@ bool FP48LobbyRoomRetentionTest::RunTest(const FString& Parameters)
 	TravelingRoom.Participants = { Host, Guest };
 	TravelingRoom.HostPlayerState = Host;
 	TravelingRoom.RecordGameHandoff(TEXT("127.0.0.1:17777"));
+	const FGuid MatchId = TravelingRoom.MatchId;
+	TestTrue(TEXT("Match ID is generated"), MatchId.IsValid());
 	const FGuid HostId = TravelingRoom.TravelMembers[0].MemberId;
 	TestTrue(TEXT("Member ID is generated"), HostId.IsValid());
 	TestTrue(TEXT("Member IDs are distinct"), HostId != TravelingRoom.TravelMembers[1].MemberId);
@@ -52,6 +54,7 @@ bool FP48LobbyRoomRetentionTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("No double count before disconnect"), TravelingRoom.GetMemberCount(), 2);
 	TravelingRoom.RecordGameHandoff(TEXT("127.0.0.1:17777"));
 	TestEqual(TEXT("Recording an existing dispatch is idempotent"), TravelingRoom.TravelMembers.Num(), 2);
+	TestTrue(TEXT("Repeated dispatch keeps the same match ID"), TravelingRoom.MatchId == MatchId);
 	TravelingRoom.RemoveParticipant(Host, true);
 	TestEqual(TEXT("Host remains a member while away"), TravelingRoom.GetMemberCount(), 2);
 	TravelingRoom.RemoveParticipant(Guest, true);
@@ -143,6 +146,26 @@ bool FP48LobbyRoomRetentionTest::RunTest(const FString& Parameters)
 		TravelingRoom.AreAllTravelMembersBack());
 	TestEqual(TEXT("Returning actors do not increase the stable member count"),
 		TravelingRoom.GetMemberCount(), 3);
+
+	FP48LobbyPlayerEntry ReadyHostEntry;
+	ReadyHostEntry.PlayerState = ReturnedHost;
+	ReadyHostEntry.RoomId = 1;
+	ReadyHostEntry.bIsHost = true;
+	FP48LobbyPlayerEntry ReadyGuestEntry;
+	ReadyGuestEntry.PlayerState = ReturnedGuest;
+	ReadyGuestEntry.RoomId = 1;
+	ReadyGuestEntry.bIsReady = true;
+	Info.bHasGameServer = false;
+	Info.bIsGameServerResetting = true;
+	GameState->RebuildLobbyState({ ReadyHostEntry, ReadyGuestEntry }, { Info });
+	TestFalse(TEXT("Returned room cannot restart before server reset"),
+		GameState->CanPlayerStartGame(ReturnedHost));
+	TestTrue(TEXT("Server-reset wait is shown in room status"),
+		GameState->GetRoomStatusText(1).ToString().Contains(TEXT("reset")));
+	Info.bIsGameServerResetting = false;
+	GameState->RebuildLobbyState({ ReadyHostEntry, ReadyGuestEntry }, { Info });
+	TestTrue(TEXT("Returned room can restart after server reset"),
+		GameState->CanPlayerStartGame(ReturnedHost));
 
 	UGameInstance* TestGameInstance = NewObject<UGameInstance>();
 	UP48LobbyTravelSubsystem* TravelSubsystem =

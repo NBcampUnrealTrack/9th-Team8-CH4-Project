@@ -3,6 +3,8 @@
 #include "Engine/GameInstance.h"
 #include "HAL/FileManager.h"
 #include "Misc/Paths.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 #include "SQLiteDatabase.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogP48NicknameDatabase, Log, All);
@@ -21,10 +23,19 @@ void UP48NicknameDatabaseSubsystem::Initialize(FSubsystemCollectionBase& Collect
 	
 	UGameInstance* GameInstance = GetGameInstance();
 	
-	if (!IsValid(GameInstance) || !GameInstance->IsDedicatedServerInstance())
-	{
-		UE_LOG(LogP48NicknameDatabase, Verbose, TEXT("클라이언트에서는 Nickname DB를 초기화하지 않습니다."));
+	const bool bIsDedicatedServer =
+		IsValid(GameInstance) && GameInstance->IsDedicatedServerInstance();
 	
+	const bool bIsNicknameDatabaseServer =
+		FParse::Param(FCommandLine::Get(), TEXT("NicknameDatabaseServer"));
+	
+	if (!bIsDedicatedServer || !bIsNicknameDatabaseServer)
+	{
+		const TCHAR* SkipReason = !bIsDedicatedServer
+		? TEXT("Dedicated Server가 아님") : TEXT("NicknameDatabaseServer 옵션 없음");
+		
+		UE_LOG(LogP48NicknameDatabase, Log, TEXT("Nickname DB 초기화 제외: %s"), SkipReason);
+		
 		return;
 	}
 	

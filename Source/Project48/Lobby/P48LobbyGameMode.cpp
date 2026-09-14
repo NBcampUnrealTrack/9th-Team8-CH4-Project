@@ -56,7 +56,10 @@ void AP48LobbyGameMode::LogRoomRetentionSnapshot(const TCHAR* Event) const
 void FP48LobbyRoomState::RecordGameHandoff(const FString& Destination)
 {
 	AssignedGameServerAddress = Destination;
+	if (!MatchId.IsValid()) MatchId = FGuid::NewGuid();
 	bMatchStarting = true;
+	bGameSessionEnded = false;
+	bGameServerReadyForReuse = false;
 	for (AP48PlayerState* State : Participants)
 	{
 		RecordMemberHandoff(State);
@@ -280,9 +283,10 @@ bool AP48LobbyGameMode::RestoreReturningPlayer(
 	Room->bReturningToLobby = true;
 	PlayerState->SetReady(false);
 	PlayerController->SetLobbyRoomId(RoomId);
-	if (Room->AreAllTravelMembersBack())
+	if (Room->bGameSessionEnded && Room->AreAllTravelMembersBack())
 	{
 		FinalizeLobbyReturn(*Room, false);
+		if (Room->Participants.Num() <= 1) CloseGameRoom(RoomId);
 	}
 	else if (!bWasAlreadyReturning)
 	{
@@ -313,8 +317,10 @@ void AP48LobbyGameMode::HandleLobbyReturnTimeout(int32 RoomId)
 		return;
 	}
 
+	const bool bCloseRoom = Room->bGameSessionEnded && Room->Participants.Num() <= 1;
 	FinalizeLobbyReturn(*Room, true);
-	RefreshLobbyState();
+	if (bCloseRoom) CloseGameRoom(RoomId);
+	else RefreshLobbyState();
 	LogRoomRetentionSnapshot(TEXT("ReturnTimeoutFinalized"));
 }
 
@@ -343,12 +349,102 @@ void AP48LobbyGameMode::FinalizeLobbyReturn(
 	}
 	Room.bMatchStarting = false;
 	Room.bReturningToLobby = false;
-	Room.AssignedGameServerAddress.Reset();
+	if (Room.bGameServerReadyForReuse)
+	{
+		Room.AssignedGameServerAddress.Reset();
+		Room.MatchId.Invalidate();
+		Room.bGameServerReadyForReuse = false;
+	}
 	Room.TravelMembers.Reset();
 	for (AP48PlayerState* Participant : Room.Participants)
 	{
 		if (IsValid(Participant)) Participant->SetReady(false);
 	}
+}
+
+bool AP48LobbyGameMode::ReportGameSessionEnded(int32 RoomId,
+	const FGuid& ReportedMatchId)
+{
+	if (!HasAuthority() || !ReportedMatchId.IsValid()) return false;
+	FP48LobbyRoomState* Room = FindRoom(RoomId);
+	if (!Room || Room->MatchId != ReportedMatchId
+		|| Room->AssignedGameServerAddress.IsEmpty())
+	{
+		return false;
+	}
+	if (Room->bGameSessionEnded) return true;
+	Room->bGameSessionEnded = true;
+	Room->bReturningToLobby = true;
+	if (Room->TravelMembers.IsEmpty() || Room->AreAllTravelMembersBack())
+	{
+		FinalizeLobbyReturn(*Room, false);
+		if (Room->Participants.Num() <= 1) CloseGameRoom(RoomId);
+		else RefreshLobbyState();
+	}
+	else
+	{
+		StartLobbyReturnGracePeriod(RoomId);
+		RefreshLobbyState();
+	}
+	LogRoomRetentionSnapshot(TEXT("GameSessionEnded"));
+	return true;
+}
+
+bool AP48LobbyGameMode::ReportGameServerReady(int32 RoomId, const FGuid& ReportedMatchId)
+{
+	if (!HasAuthority() || !ReportedMatchId.IsValid()) return false;
+	FP48LobbyRoomState* Room = FindRoom(RoomId);
+	if (!Room || Room->MatchId != ReportedMatchId)
+	{
+		const FP48PendingGameServerReset* Pending =
+			PendingGameServerResets.Find(ReportedMatchId);
+		if (!Pending || Pending->RoomId != RoomId) return false;
+		PendingGameServerResets.Remove(ReportedMatchId);
+		return true;
+	}
+	if (Room->AssignedGameServerAddress.IsEmpty()) return false;
+	Room->bGameServerReadyForReuse = true;
+	if (!Room->bMatchStarting && !Room->bReturningToLobby && Room->bGameSessionEnded)
+	{
+		Room->AssignedGameServerAddress.Reset();
+		Room->MatchId.Invalidate();
+		Room->bGameServerReadyForReuse = false;
+	}
+	RefreshLobbyState();
+	return true;
+}
+
+void AP48LobbyGameMode::CloseGameRoom(int32 RoomId)
+{
+	FP48LobbyRoomState* Room = FindRoom(RoomId);
+	if (!Room) return;
+	if (!Room->bGameServerReadyForReuse && Room->MatchId.IsValid()
+		&& !Room->AssignedGameServerAddress.IsEmpty())
+	{
+		FP48PendingGameServerReset& Pending = PendingGameServerResets.FindOrAdd(Room->MatchId);
+		Pending.RoomId = RoomId;
+		Pending.ServerAddress = Room->AssignedGameServerAddress;
+	}
+	if (FTimerHandle* TimerHandle = LobbyReturnTimers.Find(RoomId))
+	{
+		GetWorldTimerManager().ClearTimer(*TimerHandle);
+	}
+	LobbyReturnTimers.Remove(RoomId);
+	for (AP48PlayerState* Participant : Room->Participants)
+	{
+		if (!IsValid(Participant)) continue;
+		Participant->SetReady(false);
+		if (AP48LobbyPlayerController* Controller =
+			Cast<AP48LobbyPlayerController>(Participant->GetOwner()))
+		{
+			Controller->SetLobbyRoomId(INDEX_NONE);
+		}
+	}
+	LobbyRooms.RemoveAll([RoomId](const FP48LobbyRoomState& Candidate)
+	{
+		return Candidate.RoomId == RoomId;
+	});
+	RefreshLobbyState();
 }
 
 void AP48LobbyGameMode::Logout(AController* Exiting)
@@ -492,6 +588,11 @@ bool AP48LobbyGameMode::RequestJoinLobbyById(
 		OutError = FText::FromString(TEXT("The selected room does not exist."));
 		return false;
 	}
+	if (Room->bGameSessionEnded && Room->bReturningToLobby)
+	{
+		OutError = FText::FromString(TEXT("This room is closing after the match."));
+		return false;
+	}
 	// Count members already sent to the game as well as those still in the lobby.
 	if (Room->GetMemberCount() >= MaxLobbyPlayers)
 	{
@@ -571,7 +672,7 @@ void AP48LobbyGameMode::RequestLobbyReady(
 	}
 
 	State->SetReady(bNewReady);
-	if (!bNewReady || Room->AssignedGameServerAddress.IsEmpty())
+	if (!bNewReady || !Room->bMatchStarting || Room->AssignedGameServerAddress.IsEmpty())
 	{
 		RefreshLobbyState();
 		return;
@@ -604,7 +705,7 @@ void AP48LobbyGameMode::RequestLobbyReady(
 	RefreshLobbyState();
 	LogRoomRetentionSnapshot(TEXT("LateJoinHandoffRecorded"));
 	PlayerController->Client_TravelToGameServer(Destination, ReturnDestination,
-		ReturnRoomId, ReturnMemberId);
+		ReturnRoomId, Room->MatchId, ReturnMemberId, 0);
 }
 
 void AP48LobbyGameMode::NotifyLobbyReadyStateChanged()
@@ -629,6 +730,12 @@ void AP48LobbyGameMode::RequestStartGame(
 			RequestingController->Client_ReportLobbyRequestFailure(
 				FText::FromString(TEXT("Only the lobby host can start the match.")));
 		}
+		return;
+	}
+	if (!Room->AssignedGameServerAddress.IsEmpty())
+	{
+		RequestingController->Client_ReportLobbyRequestFailure(
+			FText::FromString(TEXT("The game server is still resetting.")));
 		return;
 	}
 
@@ -702,7 +809,8 @@ void AP48LobbyGameMode::RequestStartGame(
 	for (int32 Index = 0; Index < TravelingPlayers.Num(); ++Index)
 	{
 		TravelingPlayers[Index]->Client_TravelToGameServer(Destination,
-			ReturnDestination, ReturnRoomId, ReturnMemberIds[Index]);
+			ReturnDestination, ReturnRoomId, StartingRoom->MatchId,
+			ReturnMemberIds[Index], TravelingPlayers.Num());
 	}
 }
 
@@ -752,8 +860,10 @@ void AP48LobbyGameMode::RefreshLobbyState()
 		RoomInfo.CurrentPlayers = Room.GetMemberCount();
 		RoomInfo.MaxPlayers = MaxLobbyPlayers;
 		RoomInfo.bRequiresPassword = !Room.Password.IsEmpty();
-		RoomInfo.bHasGameServer = !Room.AssignedGameServerAddress.IsEmpty();
+		RoomInfo.bHasGameServer = Room.bMatchStarting && !Room.AssignedGameServerAddress.IsEmpty();
 		RoomInfo.bIsReturningToLobby = Room.bReturningToLobby;
+		RoomInfo.bIsGameServerResetting = !Room.bMatchStarting
+			&& !Room.AssignedGameServerAddress.IsEmpty();
 
 		for (const FP48LobbyTravelMember& Member : Room.TravelMembers)
 		{
@@ -828,7 +938,16 @@ FString AP48LobbyGameMode::FindAvailableGameServerAddress() const
 				return Room.AssignedGameServerAddress.Equals(
 					Candidate, ESearchCase::IgnoreCase);
 			});
-		if (!bAlreadyAssigned) return Candidate;
+		bool bPendingReset = false;
+		for (const TPair<FGuid, FP48PendingGameServerReset>& Pending : PendingGameServerResets)
+		{
+			if (Pending.Value.ServerAddress.Equals(Candidate, ESearchCase::IgnoreCase))
+			{
+				bPendingReset = true;
+				break;
+			}
+		}
+		if (!bAlreadyAssigned && !bPendingReset) return Candidate;
 	}
 	return FString();
 }
