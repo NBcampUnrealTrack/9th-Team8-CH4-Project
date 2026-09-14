@@ -52,13 +52,6 @@ public:
 	UFUNCTION()
 	void ShowConnectionRejectedMessage(const EP48NicknameRegistrationResult& result);
 	
-	/*UFUNCTION(Server, Reliable)
-	void ServerRegisterNickname(const FString& Nickname);
-	UFUNCTION(Client, Reliable)
-	void ClientNicknameRegistrationSucceeded(const FString& Nickname);
-	UFUNCTION(Client, Reliable)
-	void ClientNicknameRegistrationFailed(EP48NicknameRegistrationResult Result);*/
-	
 	/* Chat System */
 public:
 	void SetChatMessageString(const FString& InChatMessageString);

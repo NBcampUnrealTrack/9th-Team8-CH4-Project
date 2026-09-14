@@ -47,7 +47,7 @@ void UP48PlayerNameWidgetComponent::UpdateNickname()
 	UP48PlayerNameWidget* NicknameWidget = Cast<UP48PlayerNameWidget>(GetUserWidgetObject());
 	if (IsValid(NicknameWidget) == false)
 	{
-		UE_LOG(LogTemp, Error, TEXT("NW생성 못함"));
+		UE_LOG(LogTemp, Warning, TEXT("NW생성 못함"));
 		return;
 	}
 	NicknameWidget->SetPlayerName(PS->GetNickname());
