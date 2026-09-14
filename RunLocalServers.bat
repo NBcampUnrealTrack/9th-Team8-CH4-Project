@@ -72,7 +72,7 @@ for %%P in (17778 17779 17780) do (
 )
 
 echo 로비 서버를 실행합니다: 127.0.0.1:17777
-start "Project48 Lobby Server 17777" "%UE_EDITOR%" "%PROJECT_FILE%" "%LOBBY_URL%" -server -log -port=17777 "-LobbyGameServerAddresses=%GAME_SERVER_ADDRESSES%" "-LobbyReturnAddress=127.0.0.1:17777"
+start "Project48 Lobby Server 17777" "%UE_EDITOR%" "%PROJECT_FILE%" "%LOBBY_URL%" -server -log -port=17777 -NicknameDatabaseServer "-LobbyGameServerAddresses=%GAME_SERVER_ADDRESSES%" "-LobbyReturnAddress=127.0.0.1:17777"
 
 echo.
 echo 서버 실행 요청을 완료했습니다.
