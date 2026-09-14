@@ -129,6 +129,7 @@ public:
 	//Weapon
 	FORCEINLINE class AP48WeaponBase* GetEquippedWeapon() const { return Weapon; }
 	
+	
 private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components|Camera", meta=(AllowPrivateAccess="true"))
 	USpringArmComponent* SpringArm;
@@ -203,6 +204,9 @@ private:
 	
 	UFUNCTION(Server, Reliable)
 	void Server_EquipWeapon(AP48WeaponBase* NewWeapon);
+	
+	UFUNCTION(Server, Reliable)
+	void Server_DropWeapon();
 	
 	//MulticastRPC
 	UFUNCTION(NetMulticast, Unreliable)

@@ -35,6 +35,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Weapon|Attack")
 	void StopAttackDetection();
 	
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Drop")
+	void OnDropped(const FVector& DropImpulse);
+	
 	void ResetAttackState();
 
 protected:
