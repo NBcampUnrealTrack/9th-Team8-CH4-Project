@@ -2,6 +2,8 @@
 
 
 #include "P48GameModeBase.h"
+#include "P48GameServerLifecycleSubsystem.h"
+#include "Engine/GameInstance.h"
 #include "Kismet/GameplayStatics.h"
 #include "../GameplayMessageLibrary/Core/P48GameplayMessageLibrary.h"
 #include "../GameplayMessageLibrary/Core/P48GameplayMessageTags.h"
@@ -44,10 +46,37 @@ void AP48GameModeBase::InitGame(const FString& MapName, const FString& Options, 
 	Super::InitGame(MapName, Options, ErrorMessage);
 
 	ConfirmedPlayerCount = UGameplayStatics::GetIntOption(Options, TEXT("ExpectedPlayers"), 0);
-	if (ConfirmedPlayerCount <= 0)
+	if (UGameplayStatics::HasOption(Options, TEXT("ExpectedPlayers")) && ConfirmedPlayerCount <= 0)
 	{
 		UE_LOG(LogTemp, Error, TEXT("[Server] Missing or invalid ExpectedPlayers: %d"), ConfirmedPlayerCount);
 	}
+}
+
+void AP48GameModeBase::StartPlay()
+{
+	Super::StartPlay();
+	GetGameInstance()->GetSubsystem<UP48GameServerLifecycleSubsystem>()->WorldReady();
+}
+
+FString AP48GameModeBase::InitNewPlayer(APlayerController* NewPlayerController,
+	const FUniqueNetIdRepl& UniqueId, const FString& Options, const FString& Portal)
+{
+	UP48GameServerLifecycleSubsystem* Lifecycle = GetGameInstance()->GetSubsystem<UP48GameServerLifecycleSubsystem>();
+	if (!bMapGenerationRequested && UGameplayStatics::HasOption(Options, TEXT("LobbyMatchId"))
+		&& !UGameplayStatics::HasOption(Options, TEXT("ExpectedPlayers")))
+	{
+		return TEXT("Spectators can join after the initial participants arrive.");
+	}
+	const FString Error = Lifecycle->AcceptMatch(Options, false);
+	if (!Error.IsEmpty()) return Error;
+	const FString SuperError = Super::InitNewPlayer(NewPlayerController, UniqueId, Options, Portal);
+	if (!SuperError.IsEmpty()) return SuperError;
+	Lifecycle->AcceptMatch(Options);
+	if (!bMapGenerationRequested && Lifecycle->GetExpectedPlayers() > 0)
+	{
+		ConfirmedPlayerCount = Lifecycle->GetExpectedPlayers();
+	}
+	return FString();
 }
 
 void AP48GameModeBase::HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer)
