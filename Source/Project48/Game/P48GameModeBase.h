@@ -57,6 +57,8 @@ protected:
 	void StartCountdown();
 	void SetPlayerInputBlocked(APlayerController* PlayerController, bool bBlocked);
 	void SetRoundInputBlocked(bool bBlocked);
+	void StartPlayerSpectating(APlayerController* PlayerController);
+	void StopPlayerSpectating(APlayerController* PlayerController);
 	// 기존 Client RPC의 IgnoreInput 누적을 막기 위해 상태 변경 시에만 호출한다.
 	TSet<TWeakObjectPtr<APlayerController>> InputBlockedControllers;
 	virtual void StartMatch();
