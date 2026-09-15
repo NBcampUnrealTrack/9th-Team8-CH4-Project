@@ -215,6 +215,11 @@ void AP48PlayerCharacter::BeginPlay()
 		PS->ResetStunCount();
 		PS->ResetHasWeapon();
 	}
+	
+	if (NicknameWidgetComponent)
+	{
+		NicknameWidgetComponent->UpdateNickname();
+	}
 }
 
 void AP48PlayerCharacter::PossessedBy(AController* NewController)

@@ -23,8 +23,8 @@ public:
 protected:
 	virtual void NativeConstruct() override;
 	
-	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UButton> Button_Confirm;
+	/*UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UButton> Button_Confirm;*/
 	
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UVerticalBox> VerticalBox_RankingBox;
@@ -35,7 +35,7 @@ protected:
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UP48ResultRow> ResultRow_Winner;
 	
-private:
+/*private:
 	UFUNCTION()
-	void OnConfirmClicked();
+	void OnConfirmClicked();*/
 };

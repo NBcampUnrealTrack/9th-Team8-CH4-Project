@@ -15,16 +15,16 @@ void UP48ResultUIWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
 	
-	if (IsValid(Button_Confirm) == true)
+	/*if (IsValid(Button_Confirm) == true)
 	{
 		Button_Confirm->OnClicked.AddDynamic(this, &UP48ResultUIWidget::OnConfirmClicked);
-	}
+	}*/
 }
 
-void UP48ResultUIWidget::OnConfirmClicked()
+/*void UP48ResultUIWidget::OnConfirmClicked()
 {
 	UE_LOG(LogTemp, Log, TEXT("로비로 가는 버튼 눌림"));
-}
+}*/
 
 void UP48ResultUIWidget::BuildAndRefreshRanking()
 {
