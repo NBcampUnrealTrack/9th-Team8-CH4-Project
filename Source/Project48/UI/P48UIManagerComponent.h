@@ -12,6 +12,7 @@ class UP48HUD;
 class AHSPlayerController;
 class UP48MainMenuWidget;
 class UP48InputNicknameWidget;
+class UP48ResultUIWidget;
 
 UCLASS( Blueprintable, ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 class PROJECT48_API UP48UIManagerComponent : public UActorComponent
@@ -42,6 +43,13 @@ protected:
 	UPROPERTY()
 	TObjectPtr<UP48HUD> HUDInstance; // 실제로 생성된 채팅 위젯 객체를 저장하는 변수
 
+	// Result UI
+	UPROPERTY(EditDefaultsOnly, Category="UI")
+	TSubclassOf<UP48ResultUIWidget> ResultUIWidgetClass;
+	UPROPERTY()
+	TObjectPtr<UP48ResultUIWidget> ResultUIWidgetInstance;
+	
+	
 	/* 메인 메뉴 */
 public:
 	void ShowMainMenu();
