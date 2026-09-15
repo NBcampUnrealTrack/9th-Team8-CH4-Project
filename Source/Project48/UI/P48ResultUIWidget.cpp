@@ -7,6 +7,7 @@
 
 #include "Project48/Game/P48GameStateBase.h"
 #include "Project48/Character/P48PlayerState.h"
+#include "Project48/Lobby/P48LobbyTravelSubsystem.h"
 
 #include "Algo/Sort.h"
 
@@ -22,7 +23,7 @@ void UP48ResultUIWidget::NativeConstruct()
 
 void UP48ResultUIWidget::OnConfirmClicked()
 {
-	UE_LOG(LogTemp, Error, TEXT("로비로 가는 버튼 눌림"));
+	UE_LOG(LogTemp, Log, TEXT("로비로 가는 버튼 눌림"));
 }
 
 void UP48ResultUIWidget::BuildAndRefreshRanking()
@@ -46,6 +47,13 @@ void UP48ResultUIWidget::BuildAndRefreshRanking()
         return;
     }
 
+	//최종 데이터가 준비되지 않았다면 UI를 만들지 않는다.
+	if (!GS->HasFinalRankingData())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ResultUI] FinalRankingData is not ready."));
+		return;
+	}
+	
     APlayerController* OwningPC = GetOwningPlayer();
     if (IsValid(OwningPC) == false)
     {
@@ -63,73 +71,24 @@ void UP48ResultUIWidget::BuildAndRefreshRanking()
     // 기존 Row 삭제
     VerticalBox_RankingBox->ClearChildren();
 
-    // GameState의 PlayerArray에서 P48PlayerState만 가져온다.
-    TArray<AP48PlayerState*> Players;
+	// 서버가 확정한 최종 랭킹 복사
+	TArray<FP48RankingData> RankingData = GS->GetFinalRankingData();
 
-    for (APlayerState* PlayerState : GS->PlayerArray)
-    {
-        AP48PlayerState* P48PS = Cast<AP48PlayerState>(PlayerState);
+	// 서버 데이터에는 bIsMe가 없으므로 클라이언트에서 자기 자신만 표시
+	for (FP48RankingData& Data : RankingData)
+	{
+		Data.bIsMe = (Data.Nickname == MyPlayerState->GetNickname());
 
-        if (IsValid(P48PS) == false)
-        {
-            continue;
-        }
+		UE_LOG(LogTemp, Warning, TEXT("[ResultUI] Final Rank=%d Nickname=%s Wins=%d IsMe=%s"),
+			Data.Rank,
+			*Data.Nickname,
+			Data.WinCount,
+			Data.bIsMe
+			? TEXT("true")
+			: TEXT("false"));
+	}
 
-        // 현재 Match 참가자만 결과에 표시
-        if (!P48PS->IsMatchParticipant())
-        {
-            continue;
-        }
-
-        Players.Add(P48PS);
-    }
-
-    // 승리 횟수가 높은 순서대로 정렬
-    Players.Sort([](const AP48PlayerState& A, const AP48PlayerState& B)
-        {
-            if (A.GetRoundWinCount() != B.GetRoundWinCount())
-            {
-                return A.GetRoundWinCount() > B.GetRoundWinCount();
-            }
-
-            // 승리 횟수가 같다면 이름 기준 정렬
-            return A.GetNickname() < B.GetNickname();
-        });
-
-    // RankingData 생성
-    TArray<FP48RankingData> RankingData;
-    RankingData.Reserve(Players.Num());
-
-    for (int32 Index = 0; Index < Players.Num(); ++Index)
-    {
-        AP48PlayerState* Player = Players[Index];
-        if (IsValid(Player) == false)
-        {
-            continue;
-        }
-
-        FP48RankingData Data;
-
-        Data.Rank = Index + 1;
-        Data.Nickname = Player->GetNickname();
-        Data.WinCount = Player->GetRoundWinCount();
-
-        // 현재 클라이언트의 PlayerState와 비교
-        Data.bIsMe = (Player == MyPlayerState);
-
-        RankingData.Add(Data);
-
-        UE_LOG(LogTemp, Warning, TEXT("[ResultUI] Rank=%d Nickname=%s Wins=%d IsMe=%s"),
-            Data.Rank,
-            *Data.Nickname,
-            Data.WinCount,
-            
-            Data.bIsMe
-            ? TEXT("true")
-            : TEXT("false"));
-    }
-
-    RefreshRanking(RankingData);
+	RefreshRanking(RankingData);
 }
 
 void UP48ResultUIWidget::RefreshRanking(const TArray<FP48RankingData>& RankingData)
@@ -147,11 +106,6 @@ void UP48ResultUIWidget::RefreshRanking(const TArray<FP48RankingData>& RankingDa
 		{
 			if (IsValid(ResultRow_Winner) == false) return;
 			
-			/*UP48ResultRow* WinnerRow = CreateWidget<UP48ResultRow>(GetOwningPlayer(),RankingWinnerClass);
-			if (IsValid(WinnerRow) == false)
-			{
-				continue;
-			}*/
 			ResultRow_Winner->SetRankingData(Data);
 			ResultRow_Winner->SetVisibility(ESlateVisibility::Visible);
 		}

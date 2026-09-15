@@ -52,6 +52,10 @@ void UP48UIManagerComponent::BeginPlay()
 			GS->OnMatchEnded.AddDynamic(
 				this,
 				&UP48UIManagerComponent::HandleMatchEnded);
+			
+			GS->OnFinalRankingDataReady.AddDynamic(
+				this,
+				&UP48UIManagerComponent::HandleFinalRankingDataReady);
 
 			// UIManager가 생성되기 전에 MatchEnd가
 			// 이미 발생했을 가능성도 처리
@@ -269,8 +273,52 @@ void UP48UIManagerComponent::ServerSendChatMessage_Implementation(
 
 void UP48UIManagerComponent::HandleMatchEnded()
 {
-	UE_LOG(LogTemp, Warning, TEXT("[UIManager] MatchEnd detected."));
+	UE_LOG(LogTemp, Warning, TEXT("[UIManager] MatchEnd detected. Waiting for FinalRankingData."));
     
+	TryShowResultUI();
+}
+
+void UP48UIManagerComponent::HandleFinalRankingDataReady()
+{
+	UE_LOG(LogTemp, Warning, TEXT("[UIManager] FinalRankingData ready."));
+
+	TryShowResultUI();
+}
+
+void UP48UIManagerComponent::TryShowResultUI()
+{
+	AP48PlayerController* PC = Cast<AP48PlayerController>(GetOwner());
+
+	if (!IsValid(PC))
+	{
+		return;
+	}
+
+	AP48GameStateBase* GS = GetWorld()
+		? GetWorld()->GetGameState<AP48GameStateBase>()
+		: nullptr;
+
+	if (!IsValid(GS))
+	{
+		return;
+	}
+
+	// 아직 MatchEnd가 아니라면 대기
+	if (GS->MatchPhase != EP48MatchPhase::MatchEnd)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[UIManager] Waiting for MatchEnd."));
+		return;
+	}
+
+	// 최종 랭킹 데이터가 아직 없다면 대기
+	if (!GS->HasFinalRankingData())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[UIManager] Waiting for FinalRankingData."));
+		return;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[UIManager] MatchEnd + FinalRankingData ready. Showing ResultUI."));
+
 	ShowResultUI();
 }
 
@@ -312,6 +360,5 @@ void UP48UIManagerComponent::ShowResultUI()
 
 	// PlayerArray에서 최종 결과 생성
 	ResultUIWidgetInstance->BuildAndRefreshRanking();
-
 	UE_LOG(LogTemp, Warning, TEXT("[UIManager] Result UI shown."));
 }

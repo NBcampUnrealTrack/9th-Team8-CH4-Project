@@ -51,8 +51,11 @@ protected:
 	
 	UFUNCTION()
 	void HandleMatchEnded();
-
+	UFUNCTION()
+	void HandleFinalRankingDataReady();
+	
 	void ShowResultUI();
+	void TryShowResultUI();
 	
 	/* 메인 메뉴 */
 public:
