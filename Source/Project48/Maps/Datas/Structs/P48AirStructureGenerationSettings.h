@@ -42,6 +42,9 @@ struct PROJECT48_API FP48AirStructureGenerationSettings
 	float MaxIslandCenterDistance = 3000.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Air|SkyIsland", meta = (EditCondition = "PlacementMode == EP48AirPlacementMode::SkyIsland", ClampMin = "0.0", Units = "cm"))
 	float HeightStep = 250.0f;
+	/** 연결되는 섬들의 월드 다리 기준 높이를 부모 섬과 동일하게 맞춥니다. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Air|SkyIsland", meta = (EditCondition = "PlacementMode == EP48AirPlacementMode::SkyIsland"))
+	bool bAlignBridgeAnchorHeights = true;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Air|SkyIsland", meta = (EditCondition = "PlacementMode == EP48AirPlacementMode::SkyIsland && bRequireConnectableLayout"))
 	FP48BridgeConnectionRules ConnectionRules;
 };
