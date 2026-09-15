@@ -7,6 +7,14 @@
 #include "Components/VerticalBox.h"
 #include "Components/ScrollBox.h"
 
+void UP48HUD::NativeConstruct()
+{
+	Super::NativeConstruct();
+
+	ChatInput->SetVisibility(ESlateVisibility::Collapsed);
+	RankingWidget->UpdateRanking();
+}
+
 void UP48HUD::AddChatMessage(const FChatMessage& InChatMessage)
 {
 	if (IsValid(VerticalBox_ChatMessages) == false) return;
@@ -26,14 +34,6 @@ void UP48HUD::AddChatMessage(const FChatMessage& InChatMessage)
 	
 	if (IsValid(ScrollBox_Chat) == false) return;
 	ScrollBox_Chat->ScrollToEnd(); // 스크롤 맨 아래로
-}
-
-void UP48HUD::NativeConstruct()
-{
-	Super::NativeConstruct();
-
-	ChatInput->SetVisibility(ESlateVisibility::Collapsed);
-	RankingWidget->UpdateRanking();
 }
 
 void UP48HUD::OpenChatInput()
