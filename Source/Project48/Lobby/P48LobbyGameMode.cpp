@@ -75,7 +75,8 @@ bool FP48LobbyRoomState::RecordMemberHandoff(AP48PlayerState* State)
 	}
 	FP48LobbyTravelMember& Member = TravelMembers.AddDefaulted_GetRef();
 	Member.MemberId = FGuid::NewGuid();
-	Member.PlayerName = State->GetPlayerName();
+	//Member.PlayerName = State->GetPlayerName();
+	Member.PlayerName = State->GetNickname();
 	Member.bIsHost = State == HostPlayerState;
 	Member.bAtGameServer = true;
 	Member.LobbyPlayerState = State;
@@ -104,7 +105,8 @@ bool FP48LobbyRoomState::RestoreTravelMember(
 
 	Member->bAtGameServer = false;
 	Member->LobbyPlayerState = State;
-	State->SetPlayerName(Member->PlayerName);
+	//State->SetPlayerName(Member->PlayerName);
+	State->SetNickname(Member->PlayerName);
 	Participants.AddUnique(State);
 	if (Member->bIsHost) HostPlayerState = State;
 	return true;
@@ -211,6 +213,14 @@ FString AP48LobbyGameMode::InitNewPlayer(APlayerController* NewPlayerController,
 	if (!Nickname.IsEmpty())
 	{
 		ChangeName(NewPlayerController, Nickname, false);
+		
+		AP48PlayerState* P48PS = NewPlayerController->GetPlayerState<AP48PlayerState>();
+		if (IsValid(P48PS) == false)
+		{
+			UE_LOG(LogTemp, Error, TEXT("P48PS 생성 실패 로비"));
+			return "";
+		}
+		P48PS->SetNickname(Nickname);
 	}
 
 	const FString RoomOption = UGameplayStatics::ParseOption(Options, TEXT("LobbyRoomId"));
@@ -886,7 +896,8 @@ void AP48LobbyGameMode::RefreshLobbyState()
 			FP48LobbyPlayerEntry& Entry = Entries.AddDefaulted_GetRef();
 			Entry.PlayerState = PlayerState;
 			Entry.RoomId = Room.RoomId;
-			Entry.PlayerName = PlayerState->GetPlayerName();
+			// Entry.PlayerName = PlayerState->GetPlayerName();
+			Entry.PlayerName = PlayerState->GetNickname();
 			Entry.bIsHost = PlayerState == Room.HostPlayerState;
 			Entry.bIsReady = !Entry.bIsHost && PlayerState->IsReady();
 		}
