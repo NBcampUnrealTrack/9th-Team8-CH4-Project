@@ -15,7 +15,10 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
 	FP48OnRoundResultChanged,
 	AP48PlayerState*, Winner,
 	bool, bIsDraw);
-
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
+	FP48OnCurrentRoundChanged,
+	int32,
+	NewRound);
 /**
  * 
  */
@@ -84,6 +87,9 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Round|Event")
 	FP48OnRoundResultChanged OnRoundResultChanged;
 	
+	UPROPERTY(BlueprintAssignable, Category = "Round|Event")
+	FP48OnCurrentRoundChanged OnCurrentRoundChanged;
+	
 	// UI에서 현재 상태를 확인할 때 사용
 	UFUNCTION(BlueprintPure, Category = "Round")
 	AP48PlayerState* GetRoundWinner() const
@@ -110,7 +116,7 @@ public:
 	UPROPERTY(Replicated, BlueprintReadOnly)
 	EP48MatchPhase MatchPhase = EP48MatchPhase::Waiting;
 	
-	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Round")
+	UPROPERTY(ReplicatedUsing = OnRep_CurrentRound, BlueprintReadOnly, Category = "Round")
 	int32 CurrentRound = 0;
 	
 protected:
@@ -133,6 +139,9 @@ protected:
 	
 	UFUNCTION()
 	void OnRep_MatchWinner();
+	
+	UFUNCTION()
+	void OnRep_CurrentRound();
 	
 	// 서버와 클라이언트에서 라운드 결과 변경 이벤트를 전달
 	void NotifyRoundResultChanged();

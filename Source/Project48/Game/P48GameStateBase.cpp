@@ -120,6 +120,7 @@ void AP48GameStateBase::SetCurrentRound(int32 NewCurrentRound)
 	}
 	
 	CurrentRound = NewCurrentRound;
+	OnRep_CurrentRound();
 	
 	UE_LOG(LogTemp, Warning, TEXT("[Server] CurrentRound: %d"), CurrentRound);
 }
@@ -199,6 +200,11 @@ void AP48GameStateBase::ResetMatchResult()
 	MatchWinner = nullptr;
 
 	UE_LOG(LogTemp, Log, TEXT("[Server] Match result reset"));
+}
+
+void AP48GameStateBase::OnRep_CurrentRound()
+{
+	OnCurrentRoundChanged.Broadcast(CurrentRound);
 }
 
 void AP48GameStateBase::OnRep_MatchWinner()
