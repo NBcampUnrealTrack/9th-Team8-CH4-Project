@@ -223,6 +223,11 @@ void AP48PlayerCharacter::BeginPlay()
 		StartRot.Pitch = -45.0f;
 		Controller->SetControlRotation(StartRot);
 	}
+	
+	if (NicknameWidgetComponent)
+	{
+		NicknameWidgetComponent->UpdateNickname();
+	}
 }
 
 void AP48PlayerCharacter::PossessedBy(AController* NewController)
