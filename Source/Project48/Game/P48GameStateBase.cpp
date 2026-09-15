@@ -98,13 +98,20 @@ void AP48GameStateBase::SetMatchPhase(EP48MatchPhase NewMatchPhase)
 	{
 		return;
 	}
-	
+	if (MatchPhase == NewMatchPhase)
+	{
+		return;
+	}
 	// 서버 Phase전환 확인용 로그입니당.
 	UE_LOG(LogTemp, Warning, TEXT("[Server] MatchPhase: %s -> %s"), 
 		*UEnum::GetValueAsString(MatchPhase),
 		*UEnum::GetValueAsString(NewMatchPhase));
 	
 	MatchPhase = NewMatchPhase;
+	
+	OnRep_MatchPhase();
+
+	ForceNetUpdate();
 }
 
 void AP48GameStateBase::SetCurrentRound(int32 NewCurrentRound)
@@ -225,6 +232,25 @@ void AP48GameStateBase::OnRep_RoundWinner()
 void AP48GameStateBase::OnRep_RoundDraw()
 {
 	NotifyRoundResultChanged();
+}
+
+void AP48GameStateBase::OnRep_MatchPhase()
+{
+	UE_LOG(LogTemp, Warning,TEXT("[%s] MatchPhase RepNotify: %s"),
+		HasAuthority()
+		? TEXT("Server")
+		: TEXT("Client"),
+		*UEnum::GetValueAsString(MatchPhase));
+
+	if (MatchPhase == EP48MatchPhase::MatchEnd)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[%s] Match Ended -> Broadcasting OnMatchEnded"),
+			HasAuthority()
+			? TEXT("Server")
+			: TEXT("Client"));
+
+		OnMatchEnded.Broadcast();
+	}
 }
 
 /**
