@@ -49,6 +49,8 @@ AP48WeaponBase::AP48WeaponBase()
 		UCollisionProfile::PhysicsActor_ProfileName
 		);
 	
+	WeaponMeshComponent->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+	
 	WeaponMeshComponent->SetSimulatePhysics(true);
 	WeaponMeshComponent->SetEnableGravity(true);
 	WeaponMeshComponent->SetNotifyRigidBodyCollision(true);
@@ -428,6 +430,7 @@ void AP48WeaponBase::OnDropped(const FVector& DropImpulse)
 	if (UStaticMeshComponent* WeaponMesh = FindComponentByClass<UStaticMeshComponent>())
 	{
 		WeaponMesh->SetCollisionProfileName(UCollisionProfile::PhysicsActor_ProfileName);
+		WeaponMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
 		WeaponMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 		WeaponMesh->SetSimulatePhysics(true);
 		WeaponMesh->SetEnableGravity(true);
