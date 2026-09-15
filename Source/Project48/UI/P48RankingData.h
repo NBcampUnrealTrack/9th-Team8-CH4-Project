@@ -12,10 +12,10 @@ struct FP48RankingData
 	int32 Rank = 0;
 
 	UPROPERTY()
-	FString Nickname = "";
+	FString Nickname = TEXT("");
 
 	UPROPERTY()
-	int32 Score = 0;
+	int32 WinCount = 0;
 
 	UPROPERTY()
 	bool bIsMe = false;

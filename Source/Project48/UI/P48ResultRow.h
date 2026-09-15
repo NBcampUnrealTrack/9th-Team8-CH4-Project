@@ -25,9 +25,6 @@ protected:
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UTextBlock> TextBlock_Nickname;
 
-	/*UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UTextBlock> Text_Score;*/
-
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UImage> Image_YOU;
 
@@ -36,9 +33,6 @@ protected:
 
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UImage> Image_Crown2;
-
-	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UImage> Image_Crown3;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	TObjectPtr<UTexture2D> CrownTexture;

@@ -18,6 +18,8 @@ public:
 	// 서버/PlayerState 데이터 수신 시 호출
 	void RefreshRanking(const TArray<FP48RankingData>& RankingData);
 	
+	void BuildAndRefreshRanking();
+	
 protected:
 	virtual void NativeConstruct() override;
 	
@@ -29,8 +31,9 @@ protected:
 	
 	UPROPERTY(EditDefaultsOnly)
 	TSubclassOf<UP48ResultRow> RankingRowClass;
-	UPROPERTY(EditDefaultsOnly)
-	TSubclassOf<UP48ResultRow> RankingWinnerClass;
+	
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UP48ResultRow> ResultRow_Winner;
 	
 private:
 	UFUNCTION()
