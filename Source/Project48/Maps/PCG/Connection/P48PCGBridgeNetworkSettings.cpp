@@ -38,8 +38,13 @@ namespace P48BridgeNetwork
 		int32 A = INDEX_NONE;
 		int32 B = INDEX_NONE;
 		float Length = 0.0f;
-		FVector Start = FVector::ZeroVector;
-		FVector End = FVector::ZeroVector;
+		TArray<FP48BridgeEndpointCandidate> Candidates;
+	};
+
+	struct FSelectedConnection
+	{
+		int32 EdgeIndex = INDEX_NONE;
+		int32 CandidateIndex = INDEX_NONE;
 	};
 
 	struct FBridgePoint
@@ -99,6 +104,125 @@ namespace P48BridgeNetwork
 		TArray<int32> Parent;
 		TArray<uint8> Rank;
 	};
+
+	constexpr int32 MaxRequiredSelectionSearchStates = 20000;
+
+	bool CanStillConnectAllIslands(
+		const TArray<FEdge>& Edges,
+		const int32 NextEdgeIndex,
+		const int32 IslandCount,
+		FDisjointSet Sets)
+	{
+		for (int32 EdgeIndex = NextEdgeIndex; EdgeIndex < Edges.Num(); ++EdgeIndex)
+		{
+			Sets.Union(Edges[EdgeIndex].A, Edges[EdgeIndex].B);
+		}
+		const int32 Root = Sets.Find(0);
+		for (int32 IslandIndex = 1; IslandIndex < IslandCount; ++IslandIndex)
+		{
+			if (Sets.Find(IslandIndex) != Root)
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	bool SearchRequiredConnections(
+		const TArray<FEdge>& Edges,
+		const TArray<FAnchor>& Anchors,
+		const float EndpointExclusionRadius,
+		const int32 EdgeIndex,
+		FDisjointSet Sets,
+		TArray<FSelectedConnection> Selections,
+		TMap<int32, TArray<FVector>> UsedEndpointsByIsland,
+		int32& SearchStateCount,
+		bool& bSearchBudgetExhausted,
+		TArray<FSelectedConnection>& OutSelections,
+		TMap<int32, TArray<FVector>>& OutUsedEndpointsByIsland)
+	{
+		if (++SearchStateCount > MaxRequiredSelectionSearchStates)
+		{
+			bSearchBudgetExhausted = true;
+			return false;
+		}
+		if (Selections.Num() == Anchors.Num() - 1)
+		{
+			OutSelections = MoveTemp(Selections);
+			OutUsedEndpointsByIsland = MoveTemp(UsedEndpointsByIsland);
+			return true;
+		}
+		if (EdgeIndex >= Edges.Num() ||
+			Selections.Num() + (Edges.Num() - EdgeIndex) < Anchors.Num() - 1 ||
+			!CanStillConnectAllIslands(Edges, EdgeIndex, Anchors.Num(), Sets))
+		{
+			return false;
+		}
+
+		const FEdge& Edge = Edges[EdgeIndex];
+		if (Sets.Find(Edge.A) != Sets.Find(Edge.B))
+		{
+			for (int32 CandidateIndex = 0; CandidateIndex < Edge.Candidates.Num(); ++CandidateIndex)
+			{
+				const FP48BridgeEndpointCandidate& Candidate = Edge.Candidates[CandidateIndex];
+				if (!P48BridgeConnectionPolicy::IsCandidateAvailable(
+					Candidate,
+					Anchors[Edge.A].IslandIndex,
+					Anchors[Edge.B].IslandIndex,
+					UsedEndpointsByIsland,
+					EndpointExclusionRadius))
+				{
+					continue;
+				}
+
+				FDisjointSet CandidateSets = Sets;
+				CandidateSets.Union(Edge.A, Edge.B);
+				TArray<FSelectedConnection> CandidateSelections = Selections;
+				FSelectedConnection& Selection = CandidateSelections.Emplace_GetRef();
+				Selection.EdgeIndex = EdgeIndex;
+				Selection.CandidateIndex = CandidateIndex;
+				TMap<int32, TArray<FVector>> CandidateUsedEndpoints = UsedEndpointsByIsland;
+				P48BridgeConnectionPolicy::ReserveCandidateEndpoints(
+					Candidate,
+					Anchors[Edge.A].IslandIndex,
+					Anchors[Edge.B].IslandIndex,
+					CandidateUsedEndpoints);
+
+				if (SearchRequiredConnections(
+					Edges,
+					Anchors,
+					EndpointExclusionRadius,
+					EdgeIndex + 1,
+					MoveTemp(CandidateSets),
+					MoveTemp(CandidateSelections),
+					MoveTemp(CandidateUsedEndpoints),
+					SearchStateCount,
+					bSearchBudgetExhausted,
+					OutSelections,
+					OutUsedEndpointsByIsland))
+				{
+					return true;
+				}
+				if (bSearchBudgetExhausted)
+				{
+					return false;
+				}
+			}
+		}
+
+		return SearchRequiredConnections(
+			Edges,
+			Anchors,
+			EndpointExclusionRadius,
+			EdgeIndex + 1,
+			MoveTemp(Sets),
+			MoveTemp(Selections),
+			MoveTemp(UsedEndpointsByIsland),
+			SearchStateCount,
+			bSearchBudgetExhausted,
+			OutSelections,
+			OutUsedEndpointsByIsland);
+	}
 
 	bool FacesBridge(const FSurfaceCandidate& Candidate, const FVector& OtherLocation, const FP48BridgeConnectionRules& Rules)
 	{
@@ -312,13 +436,12 @@ bool FP48PCGBridgeNetworkElement::ExecuteInternal(FPCGContext* Context) const
 		{
 			for (int32 B = A + 1; B < Anchors.Num(); ++B)
 			{
+				P48BridgeNetwork::FEdge Edge;
+				Edge.A = A;
+				Edge.B = B;
 				if (bSurfaceInput)
 				{
-					// 섬 쌍마다 경사/높이/길이를 통과하는 가장 짧은 후보 쌍 하나만 MST에 전달합니다.
-					P48BridgeNetwork::FEdge Best;
-					Best.A = A;
-					Best.B = B;
-					Best.Length = TNumericLimits<float>::Max();
+					// 섬 쌍의 모든 유효 후보를 보관한 뒤 높은 공통 Z부터 대체할 수 있게 정렬합니다.
 					for (const P48BridgeNetwork::FSurfaceCandidate& StartCandidate : Anchors[A].SurfaceCandidates)
 					{
 						for (const P48BridgeNetwork::FSurfaceCandidate& EndCandidate : Anchors[B].SurfaceCandidates)
@@ -328,63 +451,104 @@ bool FP48PCGBridgeNetworkElement::ExecuteInternal(FPCGContext* Context) const
 							{
 								continue;
 							}
-							P48BridgeNetwork::FAnchor StartAnchor;
-							P48BridgeNetwork::FAnchor EndAnchor;
-							StartAnchor.Location = StartCandidate.Location;
-							EndAnchor.Location = EndCandidate.Location;
 							float CandidateLength = 0.0f;
-							if (P48BridgeConnectionPolicy::IsGeometryValid(StartAnchor.Location, EndAnchor.Location, Settings->GenerationSettings.ConnectionRules, CandidateLength) && CandidateLength < Best.Length)
+							if (P48BridgeConnectionPolicy::IsGeometryValid(StartCandidate.Location, EndCandidate.Location, Settings->GenerationSettings.ConnectionRules, CandidateLength))
 							{
-								Best.Length = CandidateLength;
-								Best.Start = StartCandidate.Location;
-								Best.End = EndCandidate.Location;
+								FP48BridgeEndpointCandidate& Candidate = Edge.Candidates.Emplace_GetRef();
+								Candidate.Start = StartCandidate.Location;
+								Candidate.End = EndCandidate.Location;
+								Candidate.Length = CandidateLength;
 							}
 						}
 					}
-					if (Best.Length < TNumericLimits<float>::Max()) { ValidEdges.Add(Best); }
+					if (!Edge.Candidates.IsEmpty())
+					{
+						P48BridgeConnectionPolicy::SortEndpointCandidates(Edge.Candidates);
+						Edge.Length = TNumericLimits<float>::Max();
+						for (const FP48BridgeEndpointCandidate& Candidate : Edge.Candidates)
+						{
+							Edge.Length = FMath::Min(Edge.Length, Candidate.Length);
+						}
+						ValidEdges.Add(MoveTemp(Edge));
+					}
 					continue;
 				}
 				float Length = 0.0f;
 				if (P48BridgeConnectionPolicy::IsGeometryValid(Anchors[A].Location, Anchors[B].Location, Settings->GenerationSettings.ConnectionRules, Length))
 				{
-					P48BridgeNetwork::FEdge& Edge = ValidEdges.Emplace_GetRef();
-					Edge.A = A;
-					Edge.B = B;
+					FP48BridgeEndpointCandidate& Candidate = Edge.Candidates.Emplace_GetRef();
+					P48BridgeNetwork::CalculateEndpoints(Anchors[A], Anchors[B], Settings->GenerationSettings.AnchorInset, Candidate.Start, Candidate.End);
+					Candidate.Length = FVector::Distance(Candidate.Start, Candidate.End);
 					Edge.Length = Length;
+					ValidEdges.Add(MoveTemp(Edge));
 				}
 			}
 		}
 
-		ValidEdges.Sort([](const P48BridgeNetwork::FEdge& Left, const P48BridgeNetwork::FEdge& Right) { return Left.Length < Right.Length; });
-		P48BridgeNetwork::FDisjointSet Sets(Anchors.Num());
-		TArray<int32> SelectedEdgeIndices;
-		TSet<int32> SelectedEdgeSet;
-		for (int32 EdgeIndex = 0; EdgeIndex < ValidEdges.Num(); ++EdgeIndex)
+		ValidEdges.Sort([](const P48BridgeNetwork::FEdge& Left, const P48BridgeNetwork::FEdge& Right)
 		{
-			const P48BridgeNetwork::FEdge& Edge = ValidEdges[EdgeIndex];
-			if (Sets.Union(Edge.A, Edge.B))
+			if (Left.Length != Right.Length) { return Left.Length < Right.Length; }
+			if (Left.A != Right.A) { return Left.A < Right.A; }
+			return Left.B < Right.B;
+		});
+		TArray<P48BridgeNetwork::FSelectedConnection> SelectedConnections;
+		TMap<int32, TArray<FVector>> UsedEndpointsByIsland;
+		int32 SearchStateCount = 0;
+		bool bSearchBudgetExhausted = false;
+		if (!P48BridgeNetwork::SearchRequiredConnections(
+			ValidEdges,
+			Anchors,
+			Settings->GenerationSettings.EndpointExclusionRadius,
+			0,
+			P48BridgeNetwork::FDisjointSet(Anchors.Num()),
+			{},
+			{},
+			SearchStateCount,
+			bSearchBudgetExhausted,
+			SelectedConnections,
+			UsedEndpointsByIsland))
+		{
+			if (bSearchBudgetExhausted)
 			{
-				SelectedEdgeIndices.Add(EdgeIndex);
-				SelectedEdgeSet.Add(EdgeIndex);
-				if (SelectedEdgeIndices.Num() == Anchors.Num() - 1)
-				{
-					break;
-				}
+				PCGE_LOG(Error, GraphAndLog, LOCTEXT("SelectionBudgetExhausted", "Bridge endpoint selection exceeded its safety search budget. No occupied endpoint was reused and no bridges were emitted for this input."));
 			}
-		}
-
-		if (SelectedEdgeIndices.Num() != Anchors.Num() - 1)
-		{
-			PCGE_LOG(Error, GraphAndLog, LOCTEXT("DisconnectedGraph", "The bridge rules and endpoint-facing test cannot connect every island. No bridges were emitted for this input."));
+			else
+			{
+				PCGE_LOG(Error, GraphAndLog, LOCTEXT("DisconnectedGraph", "The bridge rules, endpoint-facing test, and endpoint exclusion radius cannot connect every island without reusing an occupied endpoint. No bridges were emitted for this input."));
+			}
 			continue;
+		}
+		TSet<int32> SelectedEdgeSet;
+		for (const P48BridgeNetwork::FSelectedConnection& Selection : SelectedConnections)
+		{
+			SelectedEdgeSet.Add(Selection.EdgeIndex);
 		}
 
 		FRandomStream Random(PCGHelpers::ComputeSeed(Settings->GenerationSettings.RandomSeed, P48ReadNetworkSeed(Context)));
 		for (int32 EdgeIndex = 0; EdgeIndex < ValidEdges.Num(); ++EdgeIndex)
 		{
-			if (!SelectedEdgeSet.Contains(EdgeIndex) && Random.FRand() <= Settings->GenerationSettings.AdditionalBridgeChance)
+			if (SelectedEdgeSet.Contains(EdgeIndex) || Random.FRand() > Settings->GenerationSettings.AdditionalBridgeChance)
 			{
-				SelectedEdgeIndices.Add(EdgeIndex);
+				continue;
+			}
+			const P48BridgeNetwork::FEdge& Edge = ValidEdges[EdgeIndex];
+			const int32 CandidateIndex = P48BridgeConnectionPolicy::FindFirstAvailableCandidate(
+				Edge.Candidates,
+				Anchors[Edge.A].IslandIndex,
+				Anchors[Edge.B].IslandIndex,
+				UsedEndpointsByIsland,
+				Settings->GenerationSettings.EndpointExclusionRadius);
+			if (CandidateIndex != INDEX_NONE)
+			{
+				P48BridgeNetwork::FSelectedConnection& Selection = SelectedConnections.Emplace_GetRef();
+				Selection.EdgeIndex = EdgeIndex;
+				Selection.CandidateIndex = CandidateIndex;
+				SelectedEdgeSet.Add(EdgeIndex);
+				P48BridgeConnectionPolicy::ReserveCandidateEndpoints(
+					Edge.Candidates[CandidateIndex],
+					Anchors[Edge.A].IslandIndex,
+					Anchors[Edge.B].IslandIndex,
+					UsedEndpointsByIsland);
 			}
 		}
 
@@ -393,21 +557,13 @@ bool FP48PCGBridgeNetworkElement::ExecuteInternal(FPCGContext* Context) const
 		float ActorWeight = 0.0f;
 		for (const FP48WeightedBridgeActor& Entry : Settings->GenerationSettings.ActorClasses) { ActorWeight += Entry.ActorClass ? FMath::Max(0.0f, Entry.Weight) : 0.0f; }
 
-		for (const int32 EdgeIndex : SelectedEdgeIndices)
+		for (const P48BridgeNetwork::FSelectedConnection& Selection : SelectedConnections)
 		{
-			const P48BridgeNetwork::FEdge& Edge = ValidEdges[EdgeIndex];
-			FVector Start;
-			FVector End;
-			if (bSurfaceInput)
-			{
-				// 이미 표면에서 검증된 위치이므로 Bounds/AnchorInset으로 다시 이동시키지 않습니다.
-				Start = Edge.Start;
-				End = Edge.End;
-			}
-			else
-			{
-				P48BridgeNetwork::CalculateEndpoints(Anchors[Edge.A], Anchors[Edge.B], Settings->GenerationSettings.AnchorInset, Start, End);
-			}
+			const P48BridgeNetwork::FEdge& Edge = ValidEdges[Selection.EdgeIndex];
+			const FP48BridgeEndpointCandidate& Candidate = Edge.Candidates[Selection.CandidateIndex];
+			// 표면/레거시 입력 모두 선택 단계에서 확정하고 점유 검사한 끝점을 그대로 사용합니다.
+			const FVector Start = Candidate.Start;
+			const FVector End = Candidate.End;
 			const FVector Difference = End - Start;
 			const float BridgeLength = Difference.Length();
 			if (BridgeLength <= UE_KINDA_SMALL_NUMBER)

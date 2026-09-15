@@ -80,4 +80,61 @@ bool FP48BridgeEndpointDuplicateTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FP48BridgeCandidateSelectionTest,
+	"P48.Maps.Bridge.CandidateSelection",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FP48BridgeCandidateSelectionTest::RunTest(const FString& Parameters)
+{
+	TArray<FP48BridgeEndpointCandidate> Candidates;
+	auto AddCandidate = [&Candidates](const FVector& Start, const FVector& End)
+	{
+		FP48BridgeEndpointCandidate& Candidate = Candidates.Emplace_GetRef();
+		Candidate.Start = Start;
+		Candidate.End = End;
+		Candidate.Length = FVector::Distance(Start, End);
+	};
+
+	// 입력 순서와 무관하게 가장 높은 공통 높이를 먼저, 같은 높이에서는 더 수평인 후보를 먼저 사용합니다.
+	AddCandidate(FVector(0.0, 300.0, 900.0), FVector(1000.0, 300.0, 900.0));
+	AddCandidate(FVector(0.0, 100.0, 1000.0), FVector(1000.0, 100.0, 980.0));
+	AddCandidate(FVector(0.0, 200.0, 1000.0), FVector(1000.0, 200.0, 1000.0));
+	P48BridgeConnectionPolicy::SortEndpointCandidates(Candidates);
+
+	TestTrue(TEXT("Highest and level candidate is first"), Candidates[0].Start.Equals(FVector(0.0, 200.0, 1000.0)));
+	TestTrue(TEXT("Same-height alternate remains before lower candidate"), Candidates[1].Start.Equals(FVector(0.0, 100.0, 1000.0)));
+	TestTrue(TEXT("Lower candidate is last"), Candidates[2].Start.Equals(FVector(0.0, 300.0, 900.0)));
+
+	TMap<int32, TArray<FVector>> UsedEndpoints;
+	UsedEndpoints.FindOrAdd(10).Add(Candidates[0].Start);
+	UsedEndpoints.FindOrAdd(20).Add(Candidates[0].End);
+	int32 SelectedIndex = P48BridgeConnectionPolicy::FindFirstAvailableCandidate(Candidates, 10, 20, UsedEndpoints, 50.0f);
+	TestEqual(TEXT("Occupied highest point falls back to another high point"), SelectedIndex, 1);
+
+	P48BridgeConnectionPolicy::ReserveCandidateEndpoints(Candidates[SelectedIndex], 10, 20, UsedEndpoints);
+	SelectedIndex = P48BridgeConnectionPolicy::FindFirstAvailableCandidate(Candidates, 10, 20, UsedEndpoints, 50.0f);
+	TestEqual(TEXT("Exhausted high points fall back to the next lower point"), SelectedIndex, 2);
+
+	P48BridgeConnectionPolicy::ReserveCandidateEndpoints(Candidates[SelectedIndex], 10, 20, UsedEndpoints);
+	SelectedIndex = P48BridgeConnectionPolicy::FindFirstAvailableCandidate(Candidates, 10, 20, UsedEndpoints, 50.0f);
+	TestEqual(TEXT("All occupied points are never reused"), SelectedIndex, INDEX_NONE);
+
+	TMap<int32, TArray<FVector>> OtherIslandUsage;
+	OtherIslandUsage.FindOrAdd(99).Add(Candidates[0].Start);
+	SelectedIndex = P48BridgeConnectionPolicy::FindFirstAvailableCandidate(Candidates, 10, 20, OtherIslandUsage, 50.0f);
+	TestEqual(TEXT("Endpoint exclusion is scoped to each island"), SelectedIndex, 0);
+
+	float ChildBaseHeight = 0.0f;
+	TestTrue(
+		TEXT("Different mesh anchor offsets can share one world bridge height"),
+		P48BridgeConnectionPolicy::TryCalculateAlignedIslandHeight(500.0f, 300.0f, 100.0f, -1000.0f, 2000.0f, ChildBaseHeight));
+	TestTrue(TEXT("Aligned child base height preserves the parent world anchor height"), FMath::IsNearlyEqual(ChildBaseHeight + 100.0f, 800.0f));
+	TestFalse(
+		TEXT("An aligned island outside the allowed height range is rejected instead of clamped"),
+		P48BridgeConnectionPolicy::TryCalculateAlignedIslandHeight(1900.0f, 300.0f, 100.0f, -1000.0f, 2000.0f, ChildBaseHeight));
+
+	return true;
+}
+
 #endif
