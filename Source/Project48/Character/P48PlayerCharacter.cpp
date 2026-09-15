@@ -33,7 +33,8 @@ AP48PlayerCharacter::AP48PlayerCharacter()
 	SpringArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("SpringArm"));
 	SpringArm->SetupAttachment(RootComponent);
 	SpringArm->bUsePawnControlRotation = true;
-	SpringArm->TargetArmLength = 400.0f;
+	SpringArm->TargetArmLength = 450.0f; //
+	SpringArm->SetRelativeRotation(FRotator(-45.0f, 0.0f, 0.0f)); //
 	
 	Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
 	Camera->SetupAttachment(SpringArm, USpringArmComponent::SocketName);
@@ -216,9 +217,11 @@ void AP48PlayerCharacter::BeginPlay()
 		PS->ResetHasWeapon();
 	}
 	
-	if (NicknameWidgetComponent)
+	if (Controller != nullptr)
 	{
-		NicknameWidgetComponent->UpdateNickname();
+		FRotator StartRot = Controller->GetControlRotation();
+		StartRot.Pitch = -45.0f;
+		Controller->SetControlRotation(StartRot);
 	}
 }
 
@@ -361,7 +364,6 @@ void AP48PlayerCharacter::Look(const FInputActionValue& Value)
 	if (Controller != nullptr)
 	{
 		AddControllerYawInput(LookValue.X);
-		AddControllerPitchInput(LookValue.Y);
 	}
 }
 
