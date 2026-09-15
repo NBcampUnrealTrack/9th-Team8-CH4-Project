@@ -18,21 +18,24 @@ public:
 	// 서버/PlayerState 데이터 수신 시 호출
 	void RefreshRanking(const TArray<FP48RankingData>& RankingData);
 	
+	void BuildAndRefreshRanking();
+	
 protected:
 	virtual void NativeConstruct() override;
 	
-	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UButton> Button_Confirm;
+	/*UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UButton> Button_Confirm;*/
 	
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UVerticalBox> VerticalBox_RankingBox;
 	
 	UPROPERTY(EditDefaultsOnly)
 	TSubclassOf<UP48ResultRow> RankingRowClass;
-	UPROPERTY(EditDefaultsOnly)
-	TSubclassOf<UP48ResultRow> RankingWinnerClass;
 	
-private:
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UP48ResultRow> ResultRow_Winner;
+	
+/*private:
 	UFUNCTION()
-	void OnConfirmClicked();
+	void OnConfirmClicked();*/
 };

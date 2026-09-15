@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/GameStateBase.h"
+#include "Project48/UI/P48RankingData.h"
 #include "P48GameStateBase.generated.h"
 
 class AP48PlayerState;
@@ -19,6 +20,10 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
 	FP48OnCurrentRoundChanged,
 	int32,
 	NewRound);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(
+	FP48OnMatchEnded);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(
+	FP48OnFinalRankingDataReady);
 /**
  * 
  */
@@ -90,6 +95,12 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Round|Event")
 	FP48OnCurrentRoundChanged OnCurrentRoundChanged;
 	
+	UPROPERTY(BlueprintAssignable, Category = "Match|Event")
+	FP48OnMatchEnded OnMatchEnded;
+	
+	UPROPERTY(BlueprintAssignable, Category = "Match|Event")
+	FP48OnFinalRankingDataReady OnFinalRankingDataReady;
+	
 	// UI에서 현재 상태를 확인할 때 사용
 	UFUNCTION(BlueprintPure, Category = "Round")
 	AP48PlayerState* GetRoundWinner() const
@@ -113,7 +124,8 @@ public:
 	bool HasRoundResult() const;
 
 	
-	UPROPERTY(Replicated, BlueprintReadOnly)
+	//UPROPERTY(Replicated, BlueprintReadOnly)
+	UPROPERTY(ReplicatedUsing = OnRep_MatchPhase, BlueprintReadOnly)
 	EP48MatchPhase MatchPhase = EP48MatchPhase::Waiting;
 	
 	UPROPERTY(ReplicatedUsing = OnRep_CurrentRound, BlueprintReadOnly, Category = "Round")
@@ -143,6 +155,9 @@ protected:
 	UFUNCTION()
 	void OnRep_CurrentRound();
 	
+	UFUNCTION()
+	void OnRep_MatchPhase();
+	
 	// 서버와 클라이언트에서 라운드 결과 변경 이벤트를 전달
 	void NotifyRoundResultChanged();
 	
@@ -163,4 +178,35 @@ protected:
 public:
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastReceiveChatMessage(const FChatMessage& InChatMessage);
+	
+public:
+	// 매치 종료 시 서버가 확정한 최종 랭킹 데이터를 생성
+	void BuildFinalRankingData();
+
+	// 클라이언트에서 최종 랭킹 데이터가 준비되었는지 확인
+	bool HasFinalRankingData() const
+	{
+		return bFinalRankingDataReady;
+	}
+
+	// 최종 랭킹 데이터 가져오기
+	const TArray<FP48RankingData>& GetFinalRankingData() const
+	{
+		return FinalRankingData;
+	}
+	
+protected:
+	// 서버가 매치 종료 직전에 확정한 최종 랭킹
+	UPROPERTY(ReplicatedUsing = OnRep_FinalRankingData, BlueprintReadOnly, Category = "Match")
+	TArray<FP48RankingData> FinalRankingData;
+
+	// 최종 랭킹 데이터 복제가 완료되었는지
+	UPROPERTY(ReplicatedUsing = OnRep_FinalRankingDataReady, BlueprintReadOnly, Category = "Match")
+	bool bFinalRankingDataReady = false;
+
+	UFUNCTION()
+	void OnRep_FinalRankingData();
+
+	UFUNCTION()
+	void OnRep_FinalRankingDataReady();
 };

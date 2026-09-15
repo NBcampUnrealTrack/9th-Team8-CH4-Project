@@ -203,17 +203,26 @@ void AP48SurvivalGameMode::CheckRoundEndCondition()
 	// 복제 상태 변경과 승수 반영은 서버 GameMode에서 처리
 	if (Round.Outcome == EP48RoundOutcome::Winner)
 	{
-		GS->SetRoundWinner(Round.Winner);
+		// 승수 먼저 증가
 		if (Flow.bAwardRoundWin)
 		{
 			Round.Winner->AddRoundWin();
 		}
+		
+		// 승수가 증가한 이후 라운드 승자를 설정한다.
+		GS->SetRoundWinner(Round.Winner);
 	}
 	else
 	{
 		GS->SetRoundDraw();
 	}
 
+	//  Match가 실제로 끝나는 경우, 승수 반영이 끝난 상태에서 최종 랭킹을 확정
+	if (Flow.Action == EP48MatchFlowAction::MatchWinner || Flow.Action == EP48MatchFlowAction::MatchDraw)
+	{
+		GS->BuildFinalRankingData();
+	}
+	
 	ApplyFlowResult(Flow);
 }
 

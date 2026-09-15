@@ -1,7 +1,8 @@
 #include "P48UIManagerComponent.h"
 
 #include "P48ResultUIWidget.h"
-#include "Project48/UI/HS/HSGameStateBase.h"
+//#include "Project48/UI/HS/HSGameStateBase.h"
+#include "Project48/Game/P48GameStateBase.h"
 #include "Project48/Character/P48PlayerState.h"
 #include "Project48/Database/P48NicknameDatabaseSubsystem.h"
 #include "Project48/UI/Chat/ChatMessageData.h"
@@ -43,6 +44,26 @@ void UP48UIManagerComponent::BeginPlay()
 	{
 		UE_LOG(LogTemp, Log, TEXT("P48_FlyingIslandMap 들어옴"));
 		ShowHUD();
+		
+		AP48GameStateBase* GS = World->GetGameState<AP48GameStateBase>();
+
+		if (IsValid(GS) == true)
+		{
+			GS->OnMatchEnded.AddDynamic(
+				this,
+				&UP48UIManagerComponent::HandleMatchEnded);
+			
+			GS->OnFinalRankingDataReady.AddDynamic(
+				this,
+				&UP48UIManagerComponent::HandleFinalRankingDataReady);
+
+			// UIManager가 생성되기 전에 MatchEnd가
+			// 이미 발생했을 가능성도 처리
+			if (GS->MatchPhase == EP48MatchPhase::MatchEnd)
+			{
+				HandleMatchEnded();
+			}
+		}
 	}
 }
 
@@ -248,4 +269,96 @@ void UP48UIManagerComponent::ServerSendChatMessage_Implementation(
 	ChatMessage.Message = InChatMessage;
 	
 	GameState->MulticastReceiveChatMessage(ChatMessage);
+}
+
+void UP48UIManagerComponent::HandleMatchEnded()
+{
+	UE_LOG(LogTemp, Warning, TEXT("[UIManager] MatchEnd detected. Waiting for FinalRankingData."));
+    
+	TryShowResultUI();
+}
+
+void UP48UIManagerComponent::HandleFinalRankingDataReady()
+{
+	UE_LOG(LogTemp, Warning, TEXT("[UIManager] FinalRankingData ready."));
+
+	TryShowResultUI();
+}
+
+void UP48UIManagerComponent::TryShowResultUI()
+{
+	AP48PlayerController* PC = Cast<AP48PlayerController>(GetOwner());
+
+	if (!IsValid(PC))
+	{
+		return;
+	}
+
+	AP48GameStateBase* GS = GetWorld()
+		? GetWorld()->GetGameState<AP48GameStateBase>()
+		: nullptr;
+
+	if (!IsValid(GS))
+	{
+		return;
+	}
+
+	// 아직 MatchEnd가 아니라면 대기
+	if (GS->MatchPhase != EP48MatchPhase::MatchEnd)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[UIManager] Waiting for MatchEnd."));
+		return;
+	}
+
+	// 최종 랭킹 데이터가 아직 없다면 대기
+	if (!GS->HasFinalRankingData())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[UIManager] Waiting for FinalRankingData."));
+		return;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[UIManager] MatchEnd + FinalRankingData ready. Showing ResultUI."));
+
+	ShowResultUI();
+}
+
+void UP48UIManagerComponent::ShowResultUI()
+{
+	AP48PlayerController* PC = Cast<AP48PlayerController>(GetOwner());
+	if (IsValid(PC) == false)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[UIManager] PlayerController is invalid."));
+		return;
+	}
+
+	if (IsValid(ResultUIWidgetClass) == false)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[UIManager] ResultUIWidgetClass is not set."));
+		return;
+	}
+
+	// 기존 HUD 제거
+	ClearUI();
+
+	// 이미 결과창이 있다면 다시 만들지 않는다.
+	if (IsValid(ResultUIWidgetInstance) == true)
+	{
+		return;
+	}
+
+	ResultUIWidgetInstance = CreateWidget<UP48ResultUIWidget>(PC, ResultUIWidgetClass);
+	if (IsValid(ResultUIWidgetInstance) == false)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[UIManager] ResultUIWidget creation failed."));
+		return;
+	}
+
+	ResultUIWidgetInstance->AddToViewport();
+
+	PC->SetInputMode(FInputModeUIOnly());
+	PC->bShowMouseCursor = true;
+
+	// PlayerArray에서 최종 결과 생성
+	ResultUIWidgetInstance->BuildAndRefreshRanking();
+	UE_LOG(LogTemp, Warning, TEXT("[UIManager] Result UI shown."));
 }

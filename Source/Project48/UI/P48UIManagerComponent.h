@@ -49,6 +49,13 @@ protected:
 	UPROPERTY()
 	TObjectPtr<UP48ResultUIWidget> ResultUIWidgetInstance;
 	
+	UFUNCTION()
+	void HandleMatchEnded();
+	UFUNCTION()
+	void HandleFinalRankingDataReady();
+	
+	void ShowResultUI();
+	void TryShowResultUI();
 	
 	/* 메인 메뉴 */
 public:

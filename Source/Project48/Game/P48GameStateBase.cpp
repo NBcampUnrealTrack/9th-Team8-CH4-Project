@@ -35,6 +35,8 @@ void AP48GameStateBase::GetLifetimeReplicatedProps(
 	DOREPLIFETIME(AP48GameStateBase, MatchWinner);
 	DOREPLIFETIME(AP48GameStateBase, bIsTiebreaker);
 	DOREPLIFETIME(AP48GameStateBase, RoundEndServerTime);
+	DOREPLIFETIME(AP48GameStateBase, FinalRankingData);
+	DOREPLIFETIME(AP48GameStateBase, bFinalRankingDataReady);
 }
 
 void AP48GameStateBase::RequestLobbyReturn()
@@ -98,13 +100,20 @@ void AP48GameStateBase::SetMatchPhase(EP48MatchPhase NewMatchPhase)
 	{
 		return;
 	}
-	
+	if (MatchPhase == NewMatchPhase)
+	{
+		return;
+	}
 	// 서버 Phase전환 확인용 로그입니당.
 	UE_LOG(LogTemp, Warning, TEXT("[Server] MatchPhase: %s -> %s"), 
 		*UEnum::GetValueAsString(MatchPhase),
 		*UEnum::GetValueAsString(NewMatchPhase));
 	
 	MatchPhase = NewMatchPhase;
+	
+	OnRep_MatchPhase();
+
+	ForceNetUpdate();
 }
 
 void AP48GameStateBase::SetCurrentRound(int32 NewCurrentRound)
@@ -227,6 +236,25 @@ void AP48GameStateBase::OnRep_RoundDraw()
 	NotifyRoundResultChanged();
 }
 
+void AP48GameStateBase::OnRep_MatchPhase()
+{
+	UE_LOG(LogTemp, Warning,TEXT("[%s] MatchPhase RepNotify: %s"),
+		HasAuthority()
+		? TEXT("Server")
+		: TEXT("Client"),
+		*UEnum::GetValueAsString(MatchPhase));
+
+	if (MatchPhase == EP48MatchPhase::MatchEnd)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[%s] Match Ended -> Broadcasting OnMatchEnded"),
+			HasAuthority()
+			? TEXT("Server")
+			: TEXT("Client"));
+
+		OnMatchEnded.Broadcast();
+	}
+}
+
 /**
  * @brief 현재 라운드 결과를 로그로 출력하고 UI용 델리게이트를 호출합니다.
  */
@@ -268,4 +296,100 @@ void AP48GameStateBase::MulticastReceiveChatMessage_Implementation(const FChatMe
 	if (IsValid(UIManager) == false) return;
 	
 	UIManager->PrintChatMessageString(InChatMessage);
+}
+
+void AP48GameStateBase::BuildFinalRankingData()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	FinalRankingData.Reset();
+
+	TArray<AP48PlayerState*> Players;
+
+	for (APlayerState* PlayerState : PlayerArray)
+	{
+		AP48PlayerState* P48PS = Cast<AP48PlayerState>(PlayerState);
+		if (!IsValid(P48PS))
+		{
+			continue;
+		}
+
+		if (!P48PS->IsMatchParticipant())
+		{
+			continue;
+		}
+
+		Players.Add(P48PS);
+	}
+
+	// 승수 높은 순서
+	Players.Sort([](const AP48PlayerState& A, const AP48PlayerState& B)
+		{
+			if (A.GetRoundWinCount() != B.GetRoundWinCount())
+			{
+				return A.GetRoundWinCount() > B.GetRoundWinCount();
+			}
+
+			return A.GetNickname() < B.GetNickname();
+		});
+
+	FinalRankingData.Reserve(Players.Num());
+
+	for (int32 Index = 0; Index < Players.Num(); ++Index)
+	{
+		AP48PlayerState* Player = Players[Index];
+
+		if (!IsValid(Player))
+		{
+			continue;
+		}
+
+		FP48RankingData Data;
+
+		Data.Rank = Index + 1;
+		Data.Nickname = Player->GetNickname();
+		
+		// 여기의 RoundWinCount는 AddRoundWin() 이후 값이다.
+		Data.WinCount = Player->GetRoundWinCount();
+
+		// 서버에서는 내 플레이어 라는 개념이 없으므로 false
+		Data.bIsMe = false;
+
+		FinalRankingData.Add(Data);
+
+		UE_LOG(LogTemp, Warning, TEXT("[FinalRanking] Rank=%d Nickname=%s Wins=%d"),
+		Data.Rank,
+		*Data.Nickname,
+		Data.WinCount);
+	}
+
+	// 최종 데이터 준비 완료
+	bFinalRankingDataReady = true;
+
+	ForceNetUpdate();
+
+	UE_LOG(LogTemp, Warning, TEXT("[Server] FinalRankingData built. Count=%d"), FinalRankingData.Num());
+}
+
+void AP48GameStateBase::OnRep_FinalRankingData()
+{
+	UE_LOG(LogTemp, Warning, TEXT("[Client] FinalRankingData replicated. Count=%d"), FinalRankingData.Num());
+
+	if (FinalRankingData.Num() > 0)
+	{
+		OnFinalRankingDataReady.Broadcast();
+	}
+}
+
+void AP48GameStateBase::OnRep_FinalRankingDataReady()
+{
+	UE_LOG(LogTemp,Warning, TEXT("[Client] FinalRankingDataReady replicated: %s"), bFinalRankingDataReady ? TEXT("TRUE") : TEXT("FALSE"));
+
+	if (bFinalRankingDataReady)
+	{
+		OnFinalRankingDataReady.Broadcast();
+	}
 }
