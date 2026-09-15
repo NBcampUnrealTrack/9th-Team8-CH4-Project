@@ -15,46 +15,25 @@ void UP48RankingWidget::NativeConstruct()
 
 void UP48RankingWidget::UpdateRanking()
 {
-    AP48GameStateBase* GameState = GetP48GameState();
-
-    if (!GameState)
-    {
-        return;
-    }
-
     AP48PlayerState* MyPlayerState = GetMyPlayerState();
-
-    if (!MyPlayerState)
-    {
-        return;
-    }
-
-    AP48PlayerState* FirstPlayer = FindFirstPlayer();
-
-    if (!FirstPlayer)
-    {
-        return;
-    }
-
-    // -------------------------
+    if (IsValid(MyPlayerState) == false) return;
+    
+    AP48PlayerState* FirstPlayerPS = GetFirstPlayerState();
+    if (IsValid(FirstPlayerPS) == false) return;
+    
     // 1등 정보
-    // -------------------------
-
     if (TextBlock_FirstPlayerName)
     {
-        TextBlock_FirstPlayerName->SetText(FText::FromString(FirstPlayer->GetNickname()));
+        TextBlock_FirstPlayerName->SetText(FText::FromString(FirstPlayerPS->GetNickname()));
     }
 
     if (TextBlock_FirstPlayerWin)
     {
-        TextBlock_FirstPlayerWin->SetText(FText::AsNumber(FirstPlayer->GetRoundWinCount()));
+        TextBlock_FirstPlayerWin->SetText(FText::AsNumber(FirstPlayerPS->GetRoundWinCount()));
     }
 
-
-    // -------------------------
+    
     // 내 정보
-    // -------------------------
-
     if (TextBlock_MyPlayerName)
     {
         TextBlock_MyPlayerName->SetText(FText::FromString(MyPlayerState->GetNickname()));
@@ -73,40 +52,51 @@ AP48GameStateBase* UP48RankingWidget::GetP48GameState() const
         return nullptr;
     }
 
-    return GetWorld()->GetGameState<AP48GameStateBase>();
+    AP48GameStateBase* GS = GetWorld()->GetGameState<AP48GameStateBase>();
+    if (IsValid(GS) == false)
+    {
+        UE_LOG(LogTemp, Error, TEXT("RW GS 생성 실패"));
+        return nullptr;
+    }
+    
+    return GS;
 }
 
 AP48PlayerState* UP48RankingWidget::GetMyPlayerState() const
 {
     APlayerController* PC = GetOwningPlayer();
-
-    if (!PC)
+    if (IsValid(PC) == false)
     {
+        UE_LOG(LogTemp, Error, TEXT("RW PC 생성 실패"));
         return nullptr;
     }
 
-    return PC->GetPlayerState<AP48PlayerState>();
+    AP48PlayerState* MyPS = PC->GetPlayerState<AP48PlayerState>();
+    if (IsValid(MyPS) == false)
+    {
+        UE_LOG(LogTemp, Error, TEXT("RW MyPS 생성 실패"));
+        return nullptr;
+    }
+    
+    return MyPS;
 }
 
-AP48PlayerState* UP48RankingWidget::FindFirstPlayer() const
+AP48PlayerState* UP48RankingWidget::GetFirstPlayerState() const
 {
     AP48GameStateBase* GameState = GetP48GameState();
-
-    if (!GameState)
+    if (IsValid(GameState) == false)
     {
+        UE_LOG(LogTemp, Error, TEXT("RW GameState 생성 실패"));
         return nullptr;
     }
 
-    AP48PlayerState* FirstPlayer = nullptr;
-
+    AP48PlayerState* FirstPlayerPS = nullptr;
     int32 HighestWinCount = -1;
 
     for (APlayerState* PlayerState : GameState->PlayerArray)
     {
-        AP48PlayerState* P48PlayerState =
-            Cast<AP48PlayerState>(PlayerState);
-
-        if (!P48PlayerState)
+        AP48PlayerState* P48PlayerState = Cast<AP48PlayerState>(PlayerState);
+        if (IsValid(P48PlayerState) == false)
         {
             continue;
         }
@@ -115,9 +105,9 @@ AP48PlayerState* UP48RankingWidget::FindFirstPlayer() const
         {
             HighestWinCount = P48PlayerState->GetRoundWinCount();
 
-            FirstPlayer = P48PlayerState;
+            FirstPlayerPS = P48PlayerState;
         }
     }
 
-    return FirstPlayer;
+    return FirstPlayerPS;
 }

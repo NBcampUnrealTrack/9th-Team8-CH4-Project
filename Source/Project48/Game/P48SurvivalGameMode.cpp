@@ -13,6 +13,8 @@
 #include "Rule/P48BestOfRoundsMatchFlowRule.h"
 #include "Rule/P48LastPlayerStandingCondition.h"
 #include "TimerManager.h"
+#include "Kismet/GameplayStatics.h"
+#include "Project48/Character/P48PlayerController.h"
 
 AP48SurvivalGameMode::AP48SurvivalGameMode()
 {
@@ -21,6 +23,38 @@ AP48SurvivalGameMode::AP48SurvivalGameMode()
 	if (SpectatorBP.Succeeded()) { SpectatorClass = SpectatorBP.Class; }
 	MatchFlowRuleClass = UP48BestOfRoundsMatchFlowRule::StaticClass();
 	RoundWinConditionClass = UP48LastPlayerStandingCondition::StaticClass();
+}
+
+FString AP48SurvivalGameMode::InitNewPlayer(APlayerController* NewPlayerController, const FUniqueNetIdRepl& UniqueId, const FString& Options, const FString& Portal)
+{
+	const FString SuperError = Super::InitNewPlayer(
+		NewPlayerController, UniqueId, Options, Portal);
+	if (!SuperError.IsEmpty()) return SuperError;
+    
+	UE_LOG(LogTemp, Log, TEXT("INP 들어옴"));
+    
+	const FString Nickname = UGameplayStatics::ParseOption(Options, TEXT("Nickname")).TrimStartAndEnd();
+	if (Nickname.IsEmpty())
+	{
+		return TEXT("Error2");
+	}
+    
+	AP48PlayerController* P48PC = Cast<AP48PlayerController>(NewPlayerController);
+	if (IsValid(P48PC) == false)
+	{
+		UE_LOG(LogTemp, Error, TEXT("INP P48PC 생성 실패"));
+		return TEXT("Error3");
+	}
+	AP48PlayerState* P48PS = P48PC->GetPlayerState<AP48PlayerState>();
+	if (IsValid(P48PS) == false)
+	{
+		UE_LOG(LogTemp, Error, TEXT("INP P48PS 생성 실패"));
+		return TEXT("Error4");
+	}
+	UE_LOG(LogTemp, Log, TEXT("INP Nick[%s]"), *Nickname);
+	P48PS->SetNickname(Nickname);
+	UE_LOG(LogTemp, Log, TEXT("INP PSNick[%s]"), *P48PS->GetNickname());
+	return TEXT("");
 }
 
 void AP48SurvivalGameMode::InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage)

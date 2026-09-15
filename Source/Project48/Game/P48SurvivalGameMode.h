@@ -27,6 +27,9 @@ public:
 
 	virtual void InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage) override;
 	virtual void Logout(AController* Exit) override;
+	virtual FString InitNewPlayer(APlayerController* NewPlayerController,
+	const FUniqueNetIdRepl& UniqueId, const FString& Options,
+	const FString& Portal = TEXT("")) override;
 
 	// 서버에서 확정된 플레이어 탈락 정보를 전달하는 진입점
 	void NotifyPlayerEliminated(AP48PlayerState* EliminatedPlayer);

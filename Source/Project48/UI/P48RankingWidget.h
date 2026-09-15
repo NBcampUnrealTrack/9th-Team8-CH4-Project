@@ -36,5 +36,5 @@ protected:
 private:
 	AP48GameStateBase* GetP48GameState() const;
 	AP48PlayerState* GetMyPlayerState() const;
-	AP48PlayerState* FindFirstPlayer() const;
+	AP48PlayerState* GetFirstPlayerState() const;
 };
