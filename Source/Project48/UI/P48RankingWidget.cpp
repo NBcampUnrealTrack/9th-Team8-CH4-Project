@@ -15,13 +15,6 @@ void UP48RankingWidget::NativeConstruct()
 
 void UP48RankingWidget::UpdateRanking()
 {
-    AP48GameStateBase* P48GS = GetP48GameState();
-    if (IsValid(P48GS) == false)
-    {
-        UE_LOG(LogTemp, Error, TEXT("RW P48GS 생성 실패"));
-        return;
-    }
-
     AP48PlayerState* MyPlayerState = GetMyPlayerState();
     
     AP48PlayerState* FirstPlayerPS = GetFirstPlayerState();
@@ -63,6 +56,7 @@ AP48GameStateBase* UP48RankingWidget::GetP48GameState() const
         UE_LOG(LogTemp, Error, TEXT("RW GS 생성 실패"));
         return nullptr;
     }
+    
     return GS;
 }
 
