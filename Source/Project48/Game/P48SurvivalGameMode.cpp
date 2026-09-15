@@ -3,6 +3,8 @@
 #include "P48SurvivalGameMode.h"
 
 #include "P48GameStateBase.h"
+#include "P48GameServerLifecycleSubsystem.h"
+#include "Engine/GameInstance.h"
 #include "Project48/Character/P48PlayerState.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/Pawn.h"
@@ -238,6 +240,10 @@ void AP48SurvivalGameMode::Logout(AController* Exit)
 	AP48GameStateBase* GS = GetGameState<AP48GameStateBase>();
 	AP48PlayerState* Player = IsValid(Exit) ? Exit->GetPlayerState<AP48PlayerState>() : nullptr;
 
+	// 사망 여부와 관계없이 접속 중인 매치 참가자의 퇴장을 검사한다.
+	const bool bParticipantLeft = IsValid(Player) && Player->IsMatchParticipant()
+		&& IsValid(GS) && GS->MatchPhase != EP48MatchPhase::MatchEnd
+		&& (GS->MatchPhase != EP48MatchPhase::Waiting || bMapGenerationRequested);
 	// Super::Logout 호출 전에 퇴장자를 규칙의 참가자 목록에서 제거
 	const bool bCheckLogout = HasAuthority() && IsValid(GS) && IsValid(MatchFlowRule)
 		&& MatchFlowRule->RemoveParticipant(*GS, Player);
@@ -251,8 +257,9 @@ void AP48SurvivalGameMode::Logout(AController* Exit)
 	}
 
 	Super::Logout(Exit);
+	if (IsValid(Player)) Player->SetMatchParticipant(false);
 
-	if (bCheckLogout)
+	if (bCheckLogout || bParticipantLeft)
 	{
 		GetWorldTimerManager().SetTimer(
 			LogoutCheckTimerHandle, this, &ThisClass::CheckAfterLogout,
@@ -268,7 +275,26 @@ void AP48SurvivalGameMode::CheckAfterLogout()
 		return;
 	}
 
+	if (GS->MatchPhase == EP48MatchPhase::MatchEnd) return;
+	int32 Remaining = 0;
+	AP48PlayerState* LastParticipant = nullptr;
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		AP48PlayerState* Player = It->Get() ? It->Get()->GetPlayerState<AP48PlayerState>() : nullptr;
+		if (IsValid(Player) && Player->IsMatchParticipant())
+		{
+			++Remaining;
+			LastParticipant = Player;
+		}
+	}
+	if (Remaining <= 1)
+	{
+		FinishMatch(LastParticipant);
+		return;
+	}
 	ApplyFlowResult(MatchFlowRule->ResolveLogout(*GS));
+	// 퇴장 검사 때문에 보류된 일반 라운드 생존자 판정을 다시 실행한다.
+	if (!GS->IsTiebreaker() && GS->MatchPhase == EP48MatchPhase::Playing) RoundEndCheck();
 }
 
 void AP48SurvivalGameMode::ApplyFlowResult(const FP48MatchFlowResult& Result)
@@ -310,7 +336,8 @@ void AP48SurvivalGameMode::FinishMatch(AP48PlayerState* Winner)
 {
 	AP48GameStateBase* GS = GetGameState<AP48GameStateBase>();
 	if (!HasAuthority() || !IsValid(GS)
-		|| GS->MatchPhase == EP48MatchPhase::Waiting || GS->MatchPhase == EP48MatchPhase::MatchEnd)
+		|| (GS->MatchPhase == EP48MatchPhase::Waiting && !bMapGenerationRequested)
+		|| GS->MatchPhase == EP48MatchPhase::MatchEnd)
 	{
 		return;
 	}
@@ -333,6 +360,7 @@ void AP48SurvivalGameMode::FinishMatch(AP48PlayerState* Winner)
 		MatchFlowRule->Reset();
 	}
 	GS->SetMatchPhase(EP48MatchPhase::MatchEnd);
+	GetGameInstance()->GetSubsystem<UP48GameServerLifecycleSubsystem>()->EndMatch();
 	SetRoundInputBlocked(true);
 	GS->ForceNetUpdate();
 	GetWorldTimerManager().SetTimer(
@@ -347,12 +375,29 @@ void AP48SurvivalGameMode::RequestLobbyReturn()
 	{
 		GS->RequestLobbyReturn();
 	}
+	GetWorldTimerManager().SetTimer(ServerResetTimerHandle, this, &ThisClass::TryResetServer, 1.0f, true);
+}
+
+void AP48SurvivalGameMode::TryResetServer()
+{
+	// 복귀 요청만 보낸 상태에서 초기화하지 않고, 관전자를 포함한 접속 종료를 기다린다.
+	if (GetWorld()->GetNumPlayerControllers() != 0) return;
+	GetWorldTimerManager().ClearTimer(ServerResetTimerHandle);
+	GetGameInstance()->GetSubsystem<UP48GameServerLifecycleSubsystem>()->BeginReload();
+	bUseSeamlessTravel = false;
+	const FString Map = GetWorld()->GetOutermost()->GetName();
+	// Absolute travel로 이전 매치의 URL 옵션을 재사용하지 않는다.
+	if (!GetWorld()->ServerTravel(Map, true))
+	{
+		UE_LOG(LogTemp, Error, TEXT("[GameServer] Could not reload %s; server remains unavailable."), *Map);
+	}
 }
 
 void AP48SurvivalGameMode::ClearMatchTimers()
 {
 	Super::ClearMatchTimers();
 	GetWorldTimerManager().ClearTimer(ReturnLobbyTimerHandle);
+	GetWorldTimerManager().ClearTimer(ServerResetTimerHandle);
 	GetWorldTimerManager().ClearTimer(RoundEndCheckTimerHandle);
 	GetWorldTimerManager().ClearTimer(LogoutCheckTimerHandle);
 	GetWorldTimerManager().ClearTimer(RoundTimeLimitTimerHandle);
