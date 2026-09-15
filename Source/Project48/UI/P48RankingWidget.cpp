@@ -10,14 +10,16 @@ void UP48RankingWidget::NativeConstruct()
     Super::NativeConstruct();
 
     // 위젯 생성 직후 한 번 갱신
-    //UpdateRanking();
+    UpdateRanking();
 }
 
 void UP48RankingWidget::UpdateRanking()
 {
     AP48PlayerState* MyPlayerState = GetMyPlayerState();
+    if (IsValid(MyPlayerState) == false) return;
     
     AP48PlayerState* FirstPlayerPS = GetFirstPlayerState();
+    if (IsValid(FirstPlayerPS) == false) return;
     
     // 1등 정보
     if (TextBlock_FirstPlayerName)
