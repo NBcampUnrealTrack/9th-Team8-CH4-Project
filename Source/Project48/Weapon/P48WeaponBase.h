@@ -39,6 +39,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Weapon|Drop")
 	void OnDropped(const FVector& DropImpulse);
 
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_OnDropped(const FVector& DropImpulse);
+
 	void PlaySwingSound();
 	
 	void ResetAttackState();

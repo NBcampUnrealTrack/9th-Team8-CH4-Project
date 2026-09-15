@@ -461,8 +461,20 @@ void AP48WeaponBase::ResetAttackState()
 
 void AP48WeaponBase::OnDropped(const FVector& DropImpulse)
 {
+	if (HasAuthority())
+	{
+		Multicast_OnDropped(DropImpulse);
+	}
+}
+
+void AP48WeaponBase::Multicast_OnDropped_Implementation(const FVector& DropImpulse)
+{
 	DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
-	SetOwner(nullptr);
+	
+	if (HasAuthority())
+	{
+		SetOwner(nullptr);
+	}
 	
 	if (UStaticMeshComponent* WeaponMesh = FindComponentByClass<UStaticMeshComponent>())
 	{
