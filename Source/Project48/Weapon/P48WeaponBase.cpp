@@ -5,6 +5,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/CollisionProfile.h"
+#include "Engine/World.h"
 #include "Components/BoxComponent.h"
 #include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemComponent.h"
@@ -20,6 +21,8 @@ AP48WeaponBase::AP48WeaponBase()
 	PrimaryActorTick.bCanEverTick = false;
 	
 	bReplicates = true;
+	bAlwaysRelevant = true;
+	NetDormancy = DORM_Awake;
 	SetReplicateMovement(true);
 	
 	WeaponMeshComponent =
@@ -75,6 +78,40 @@ void AP48WeaponBase::BeginPlay()
 	{
 		ApplyWeaponData();
 	}
+
+	const UWorld* World = GetWorld();
+	if (World && World->GetNetMode() == NM_Client)
+	{
+		UE_LOG(
+			LogP48Weapon,
+			Display,
+			TEXT("[WeaponReplication][ClientReady] Weapon=%s LocalRole=%d RemoteRole=%d Location=%s Owner=%s DataValid=%s Mesh=%s Visible=%s"),
+			*GetName(),
+			static_cast<int32>(GetLocalRole()),
+			static_cast<int32>(GetRemoteRole()),
+			*GetActorLocation().ToCompactString(),
+			*GetNameSafe(GetOwner()),
+			bHasValidWeaponData ? TEXT("true") : TEXT("false"),
+			*GetNameSafe(WeaponMeshComponent ? WeaponMeshComponent->GetStaticMesh() : nullptr),
+			WeaponMeshComponent && WeaponMeshComponent->IsVisible() ? TEXT("true") : TEXT("false"));
+	}
+}
+
+void AP48WeaponBase::PostNetInit()
+{
+	Super::PostNetInit();
+
+	const UWorld* World = GetWorld();
+	UE_LOG(
+		LogP48Weapon,
+		Display,
+		TEXT("[WeaponReplication][ClientReceived] Weapon=%s NetMode=%d LocalRole=%d RemoteRole=%d Location=%s Owner=%s"),
+		*GetName(),
+		World ? static_cast<int32>(World->GetNetMode()) : INDEX_NONE,
+		static_cast<int32>(GetLocalRole()),
+		static_cast<int32>(GetRemoteRole()),
+		*GetActorLocation().ToCompactString(),
+		*GetNameSafe(GetOwner()));
 }
 
 void AP48WeaponBase::ApplyWeaponData()

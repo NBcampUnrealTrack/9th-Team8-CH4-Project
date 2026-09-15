@@ -109,14 +109,21 @@ AP48WeaponBase* UP48ItemSpawnSubsystem::SpawnAtPoint(AP48ItemSpawnPoint* SpawnPo
 		return nullptr;
 	}
 
+	// 월드 아이템은 모든 접속 클라이언트가 동일한 액터를 받아야 하므로
+	// 생성 직후 활성 상태를 명시하고 다음 복제 틱을 즉시 요청합니다.
+	SpawnedWeapon->SetNetDormancy(DORM_Awake);
+	SpawnedWeapon->ForceNetUpdate();
+
 	SpawnedItems.FindOrAdd(SpawnPoint) = SpawnedWeapon;
 	UE_LOG(
 		LogP48ItemSpawn,
 		Log,
-		TEXT("아이템을 생성했습니다. Point=%s Island=%d Item=%s"),
+		TEXT("[WeaponReplication][ServerSpawned] Point=%s Island=%d Weapon=%s Replicated=%s Location=%s"),
 		*GetNameSafe(SpawnPoint),
 		SpawnPoint->IslandIndex,
-		*GetNameSafe(SpawnedWeapon));
+		*GetNameSafe(SpawnedWeapon),
+		SpawnedWeapon->GetIsReplicated() ? TEXT("true") : TEXT("false"),
+		*SpawnedWeapon->GetActorLocation().ToCompactString());
 	return SpawnedWeapon;
 }
 
