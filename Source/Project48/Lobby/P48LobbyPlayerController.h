@@ -61,6 +61,9 @@ public:
 	UFUNCTION(Client, Reliable)
 	void Client_ConfirmLobbyReturn();
 
+	UFUNCTION(Client, Reliable)
+	void Client_ReturnToMainMenu();
+
 	void SetPendingLobbyReturn(int32 RoomId, const FGuid& MemberId);
 	bool ConsumePendingLobbyReturn(int32& OutRoomId, FGuid& OutMemberId);
 
@@ -72,6 +75,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Lobby")
 	void RequestLeaveLobby();
+
+	UFUNCTION(BlueprintCallable, Category = "Lobby")
+	void RequestReturnToMainMenu();
 
 	UFUNCTION(BlueprintPure, Category = "Lobby")
 	bool IsLobbyHost() const;
@@ -121,6 +127,9 @@ private:
 
 	UFUNCTION(Server, Reliable)
 	void Server_LeaveLobby();
+
+	UFUNCTION(Server, Reliable)
+	void Server_ReturnToMainMenu();
 
 	UFUNCTION(Server, Reliable)
 	void Server_SetLobbyReady(bool bNewReady);

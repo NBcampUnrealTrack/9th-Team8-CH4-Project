@@ -7,6 +7,11 @@
 #include "Net/UnrealNetwork.h"
 #include "Project48/Character/P48PlayerState.h"
 
+namespace P48LobbyPlayerController
+{
+	const TCHAR* MainMenuMapPath = TEXT("/Game/PHS/MainMenu/HSLevel");
+}
+
 void AP48LobbyPlayerController::InitializeLobbyScreens(
 	TSubclassOf<UUserWidget> MenuScreen, TSubclassOf<UUserWidget> LobbyScreen)
 {
@@ -163,6 +168,25 @@ void AP48LobbyPlayerController::Client_ConfirmLobbyReturn_Implementation()
 	}
 }
 
+void AP48LobbyPlayerController::Client_ReturnToMainMenu_Implementation()
+{
+	if (!IsLocalController())
+	{
+		return;
+	}
+
+	UGameInstance* GameInstance = GetGameInstance();
+	if (UP48LobbyTravelSubsystem* TravelSubsystem = GameInstance
+		? GameInstance->GetSubsystem<UP48LobbyTravelSubsystem>() : nullptr)
+	{
+		TravelSubsystem->ClearLobbyReturnContext();
+	}
+
+	SetInputMode(FInputModeGameOnly());
+	bShowMouseCursor = false;
+	ClientTravel(P48LobbyPlayerController::MainMenuMapPath, TRAVEL_Absolute);
+}
+
 void AP48LobbyPlayerController::SetPendingLobbyReturn(
 	int32 RoomId, const FGuid& MemberId)
 {
@@ -292,6 +316,30 @@ void AP48LobbyPlayerController::Server_LeaveLobby_Implementation()
 	{
 		Mode->LeaveLobby(this);
 	}
+}
+
+void AP48LobbyPlayerController::RequestReturnToMainMenu()
+{
+	if (IsLocalController())
+	{
+		Server_ReturnToMainMenu();
+	}
+}
+
+void AP48LobbyPlayerController::Server_ReturnToMainMenu_Implementation()
+{
+	AP48LobbyGameMode* Mode = GetWorld()->GetAuthGameMode<AP48LobbyGameMode>();
+	if (!IsValid(Mode))
+	{
+		Client_ReportLobbyRequestFailure(
+			FText::FromString(TEXT("Lobby is unavailable.")));
+		return;
+	}
+
+	// Remove the member immediately instead of waiting for the network logout,
+	// then let the owning client disconnect and load its local main-menu map.
+	Mode->LeaveLobby(this);
+	Client_ReturnToMainMenu();
 }
 
 void AP48LobbyPlayerController::RequestLobbyReady(bool bNewReady)
