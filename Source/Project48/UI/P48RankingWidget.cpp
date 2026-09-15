@@ -9,7 +9,36 @@ void UP48RankingWidget::NativeConstruct()
 {
     Super::NativeConstruct();
 
-    // 위젯 생성 직후 한 번 갱신
+    AP48GameStateBase* GS = GetP48GameState();
+    if (IsValid(GS) == false) return;
+
+    GS->OnRoundResultChanged.AddDynamic(this, &UP48RankingWidget::HandleRoundResultChanged);
+    GS->OnCurrentRoundChanged.AddDynamic(this, &UP48RankingWidget::HandleCurrentRoundChanged);
+    
+    UpdateRanking();
+}
+
+void UP48RankingWidget::NativeDestruct()
+{
+    AP48GameStateBase* GS = GetP48GameState();
+    if (IsValid(GS) == false) return;
+    
+    GS->OnRoundResultChanged.RemoveDynamic(this, &UP48RankingWidget::HandleRoundResultChanged);
+    GS->OnCurrentRoundChanged.RemoveDynamic(this, &UP48RankingWidget::HandleCurrentRoundChanged);
+
+    Super::NativeDestruct();
+}
+
+void UP48RankingWidget::HandleCurrentRoundChanged(int32 NewRound)
+{
+    UpdateRanking();
+}
+
+void UP48RankingWidget::HandleRoundResultChanged(AP48PlayerState* Winner, bool bIsDraw)
+{
+    // ResetRoundResult() 등으로 결과가 없는 상태라면 무시
+    if (IsValid(Winner) == false && bIsDraw == false) return;
+
     UpdateRanking();
 }
 
@@ -18,29 +47,68 @@ void UP48RankingWidget::UpdateRanking()
     AP48PlayerState* MyPlayerState = GetMyPlayerState();
     if (IsValid(MyPlayerState) == false) return;
     
+    AP48GameStateBase* GameState = GetP48GameState();
+    if (IsValid(GameState) == false) return;
+    
+    const int32 CurrentRound = GameState->CurrentRound;
+
+    UE_LOG(LogTemp, Warning, TEXT("[RankingWidget] UpdateRanking - CurrentRound = %d"),CurrentRound);
+    
+    if (CurrentRound == 1)
+    {
+        // 1등 정보 숨기기
+        if (TextBlock_FirstPlayerName)
+        {
+            TextBlock_FirstPlayerName->SetVisibility(ESlateVisibility::Collapsed);
+        }
+
+        if (TextBlock_FirstPlayerWin)
+        {
+            TextBlock_FirstPlayerWin->SetVisibility(ESlateVisibility::Collapsed);
+        }
+        
+        // 내 정보 표시
+        if (TextBlock_MyPlayerName)
+        {
+            TextBlock_MyPlayerName->SetVisibility(ESlateVisibility::Visible);
+            TextBlock_MyPlayerName->SetText(FText::FromString(MyPlayerState->GetNickname()));
+        }
+
+        if (TextBlock_MyPlayerWin)
+        {
+            TextBlock_MyPlayerWin->SetVisibility(ESlateVisibility::Visible);
+            TextBlock_MyPlayerWin->SetText(FText::AsNumber(MyPlayerState->GetRoundWinCount()));
+        }
+
+        return;
+    }
+    
     AP48PlayerState* FirstPlayerPS = GetFirstPlayerState();
     if (IsValid(FirstPlayerPS) == false) return;
     
     // 1등 정보
     if (TextBlock_FirstPlayerName)
     {
+        TextBlock_FirstPlayerName->SetVisibility(ESlateVisibility::Visible);
         TextBlock_FirstPlayerName->SetText(FText::FromString(FirstPlayerPS->GetNickname()));
     }
 
     if (TextBlock_FirstPlayerWin)
     {
+        TextBlock_FirstPlayerWin->SetVisibility(ESlateVisibility::Visible);
         TextBlock_FirstPlayerWin->SetText(FText::AsNumber(FirstPlayerPS->GetRoundWinCount()));
     }
-
     
-    // 내 정보
+    // 내 정보 표시
     if (TextBlock_MyPlayerName)
     {
+        TextBlock_MyPlayerName->SetVisibility(ESlateVisibility::Visible);
         TextBlock_MyPlayerName->SetText(FText::FromString(MyPlayerState->GetNickname()));
     }
 
     if (TextBlock_MyPlayerWin)
     {
+        TextBlock_MyPlayerWin->SetVisibility(ESlateVisibility::Visible);
         TextBlock_MyPlayerWin->SetText(FText::AsNumber(MyPlayerState->GetRoundWinCount()));
     }
 }

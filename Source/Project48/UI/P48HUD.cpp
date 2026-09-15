@@ -12,7 +12,6 @@ void UP48HUD::NativeConstruct()
 	Super::NativeConstruct();
 
 	ChatInput->SetVisibility(ESlateVisibility::Collapsed);
-	RankingWidget->UpdateRanking();
 }
 
 void UP48HUD::AddChatMessage(const FChatMessage& InChatMessage)

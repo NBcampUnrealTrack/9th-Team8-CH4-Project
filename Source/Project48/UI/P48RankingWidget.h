@@ -14,11 +14,21 @@ class PROJECT48_API UP48RankingWidget : public UUserWidget
 	GENERATED_BODY()
 
 public:
-	virtual void NativeConstruct() override;
-
 	// 랭킹 정보 갱신
 	UFUNCTION(BlueprintCallable, Category = "Ranking")
 	void UpdateRanking();
+	
+protected:
+	virtual void NativeConstruct() override;
+	virtual void NativeDestruct() override;
+
+	UFUNCTION()
+	void HandleRoundResultChanged(
+		AP48PlayerState* Winner,
+		bool bIsDraw);
+	
+	UFUNCTION()
+	void HandleCurrentRoundChanged(int32 NewRound);
 	
 protected:
 	UPROPERTY(meta = (BindWidget))
