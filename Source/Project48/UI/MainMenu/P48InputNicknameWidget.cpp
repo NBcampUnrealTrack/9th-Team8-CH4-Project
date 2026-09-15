@@ -23,14 +23,9 @@ void UP48InputNicknameWidget::OnConfirmClicked()
 	APlayerController* OwningPlayer = GetOwningPlayer();
 	if (IsValid(OwningPlayer) == false) return;
 	
-	FString URL = FString::Printf(TEXT("127.0.0.1:17777?UserID=%s?Nickname=%s"), *UserID, *Nickname);
+	URL = FString::Printf(TEXT("127.0.0.1:17777?UserID=%s?Nickname=%s"), *UserID, *Nickname);
 	
 	OwningPlayer->ClientTravel(URL, ETravelType::TRAVEL_Absolute);
-	
-	/*UP48UIManagerComponent* UIManager = OwningPlayer->FindComponentByClass<UP48UIManagerComponent>();
-	if (IsValid(UIManager) == false) return;
-	
-	UIManager->ServerRegisterNickname(Nickname);*/
 	
 	UE_LOG(LogTemp, Log, TEXT("확인 버튼 눌림"));
 }

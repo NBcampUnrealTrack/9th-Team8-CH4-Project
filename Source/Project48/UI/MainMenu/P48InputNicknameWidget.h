@@ -33,4 +33,7 @@ private:
 public:
 	UFUNCTION()
 	void SetErrorText(const FString& InText);
+	
+	UPROPERTY (EditDefaultsOnly, BlueprintReadOnly, Category = "URL")
+	FString URL = TEXT("");
 };
