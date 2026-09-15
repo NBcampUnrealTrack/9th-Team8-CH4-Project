@@ -309,11 +309,25 @@ namespace P48AirStructure
 		{
 			return false;
 		}
+		const float ParentAnchorHeight = Parent->LocalLocation.Z + Parent->Entry->AnchorHeight;
 		float Height = Parent->LocalLocation.Z;
-		if (Settings.HeightStep > UE_KINDA_SMALL_NUMBER)
+		if (Settings.bAlignBridgeAnchorHeights)
+		{
+			// 에셋마다 AnchorHeight가 달라도 실제 다리 끝점의 월드 Z는 부모와 동일하게 맞춥니다.
+			if (!P48BridgeConnectionPolicy::TryCalculateAlignedIslandHeight(
+				Parent->LocalLocation.Z,
+				Parent->Entry->AnchorHeight,
+				Candidate.AnchorHeight,
+				MinHeight,
+				MaxHeight,
+				Height))
+			{
+				return false;
+			}
+		}
+		else if (Settings.HeightStep > UE_KINDA_SMALL_NUMBER)
 		{
 			const float Direction = Random.RandRange(0, 1) == 0 ? -1.0f : 1.0f;
-			const float ParentAnchorHeight = Parent->LocalLocation.Z + Parent->Entry->AnchorHeight;
 			Height = ParentAnchorHeight + Direction * Settings.HeightStep - Candidate.AnchorHeight;
 			if (Height < MinHeight || Height > MaxHeight)
 			{
