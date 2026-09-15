@@ -45,6 +45,7 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void PostNetInit() override;
 	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon|Component")
 	TObjectPtr<UStaticMeshComponent> WeaponMeshComponent;
