@@ -449,6 +449,12 @@ void AP48PlayerCharacter::Attack()
 	{
 		PlayAnimMontage(MontageToPlay);
 	}
+
+	// 공격자는 입력 즉시 재생하고, 원격 캐릭터는 몽타주 멀티캐스트에서 재생한다.
+	if (bEquipWeapon && Weapon)
+	{
+		Weapon->PlaySwingSound();
+	}
 }
 
 void AP48PlayerCharacter::AttackHandle()
@@ -652,6 +658,10 @@ void AP48PlayerCharacter::Multicast_PlayWeaponMontage_Implementation()
 	if (WeaponAttackMontage)
 	{
 		PlayAnimMontage(WeaponAttackMontage);
+	}
+	if (Weapon)
+	{
+		Weapon->PlaySwingSound();
 	}
 }
 

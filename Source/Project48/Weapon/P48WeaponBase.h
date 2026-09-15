@@ -9,6 +9,7 @@ class UStaticMeshComponent;
 class UBoxComponent;
 class UPrimitiveComponent;
 class UGameplayEffect;
+class USoundBase;
 
 UCLASS()
 class PROJECT48_API AP48WeaponBase : public AActor
@@ -37,6 +38,8 @@ public:
 	
 	UFUNCTION(BlueprintCallable, Category = "Weapon|Drop")
 	void OnDropped(const FVector& DropImpulse);
+
+	void PlaySwingSound();
 	
 	void ResetAttackState();
 
@@ -60,6 +63,12 @@ private:
 	
 	UPROPERTY(Transient)
 	FWeaponDataRow CachedWeaponData;
+
+	UPROPERTY(Transient)
+	TObjectPtr<USoundBase> CachedSwingSound;
+
+	UPROPERTY(Transient)
+	TObjectPtr<USoundBase> CachedHitSound;
 	
 	UPROPERTY(Transient)
 	bool bHasValidWeaponData = false;
@@ -79,6 +88,11 @@ private:
 	bool bHasHitActorThisAttack = false;
 	
 	bool HandleWeaponHit(AActor* HitActor);
+
+	UFUNCTION(NetMulticast, Unreliable)
+	void Multicast_PlayHitSound(FVector_NetQuantize HitLocation);
+
+	void PlayHitSoundAtLocation(const FVector& HitLocation);
 	
 	FVector CalculateKnockbackDirection(const AActor* HitActor) const;
 };
