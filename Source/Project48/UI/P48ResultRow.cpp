@@ -21,25 +21,21 @@ void UP48ResultRow::SetRankingData(const FP48RankingData& Data)
 		: ESlateVisibility::Collapsed);
 	}
 	
-	if (Data.Score == 1)
+	Image_Crown1->SetBrushFromTexture(DonutTexture);
+	Image_Crown2->SetBrushFromTexture(DonutTexture);
+	
+	if (Data.Score >= 1)
 	{
 		if (Image_Crown1)
 		{
 			Image_Crown1->SetBrushFromTexture(CrownTexture);
 		}
 	}
-	else if (Data.Score == 2)
+	else if (Data.Score >= 2)
 	{
 		if (Image_Crown2)
 		{
 			Image_Crown2->SetBrushFromTexture(CrownTexture);
-		}
-	}
-	else if (Data.Score == 3)
-	{
-		if (Image_Crown3)
-		{
-			Image_Crown3->SetBrushFromTexture(CrownTexture);
 		}
 	}
 }
