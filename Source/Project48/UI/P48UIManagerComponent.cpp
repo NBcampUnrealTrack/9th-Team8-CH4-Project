@@ -1,4 +1,6 @@
 #include "P48UIManagerComponent.h"
+
+#include "P48ResultUIWidget.h"
 #include "Project48/UI/HS/HSGameStateBase.h"
 #include "Project48/Character/P48PlayerState.h"
 #include "Project48/Database/P48NicknameDatabaseSubsystem.h"
@@ -143,6 +145,11 @@ void UP48UIManagerComponent::ClearUI()
 	{
 		HUDInstance->RemoveFromParent();
 		HUDInstance = nullptr;
+	}
+	if (IsValid(ResultUIWidgetInstance))
+	{
+		ResultUIWidgetInstance->RemoveFromParent();
+		ResultUIWidgetInstance = nullptr;
 	}
 }
 
