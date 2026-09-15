@@ -10,6 +10,8 @@
 #include "AbilitySystemComponent.h"
 #include "GameplayEffect.h"
 #include "GameplayTagContainer.h"
+#include "Kismet/GameplayStatics.h"
+#include "Sound/SoundBase.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogP48Weapon, Log, All);
 
@@ -76,6 +78,8 @@ void AP48WeaponBase::BeginPlay()
 void AP48WeaponBase::ApplyWeaponData()
 {
 	bHasValidWeaponData = false;
+	CachedSwingSound = nullptr;
+	CachedHitSound = nullptr;
 	WeaponMeshComponent->SetStaticMesh(nullptr);
 	
 	if (!WeaponDataHandle.DataTable)
@@ -127,6 +131,8 @@ void AP48WeaponBase::ApplyWeaponData()
 	}
 	
 	CachedWeaponData = *FoundData;
+	CachedSwingSound = CachedWeaponData.SwingSound.LoadSynchronous();
+	CachedHitSound = CachedWeaponData.HitSound.LoadSynchronous();
 		
 	UStaticMesh* LoadedMesh = CachedWeaponData.WeaponMesh.LoadSynchronous();
 	
@@ -329,6 +335,9 @@ bool AP48WeaponBase::HandleWeaponHit(AActor* HitActor)
 	
 	// 대상 ASC에 그로기 GE 적용
 	TargetASC->ApplyGameplayEffectSpecToSelf(*EffectSpecHandle.Data.Get());
+
+	// 타격 판정이 서버에서 성공한 경우에만 모든 클라이언트에서 재생한다.
+	Multicast_PlayHitSound(HitActor->GetActorLocation());
 	
 	if (AP48PlayerCharacter* TargetCharacter = Cast<AP48PlayerCharacter>(HitActor))
 	{
@@ -344,6 +353,47 @@ bool AP48WeaponBase::HandleWeaponHit(AActor* HitActor)
 		CachedWeaponData.GroggyDamage);
 	
 	return true;
+}
+
+void AP48WeaponBase::PlaySwingSound()
+{
+	if (GetNetMode() == NM_DedicatedServer)
+	{
+		return;
+	}
+
+	if (!CachedSwingSound && !CachedWeaponData.SwingSound.IsNull())
+	{
+		CachedSwingSound = CachedWeaponData.SwingSound.LoadSynchronous();
+	}
+
+	if (CachedSwingSound)
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, CachedSwingSound, GetActorLocation());
+	}
+}
+
+void AP48WeaponBase::Multicast_PlayHitSound_Implementation(FVector_NetQuantize HitLocation)
+{
+	PlayHitSoundAtLocation(HitLocation);
+}
+
+void AP48WeaponBase::PlayHitSoundAtLocation(const FVector& HitLocation)
+{
+	if (GetNetMode() == NM_DedicatedServer)
+	{
+		return;
+	}
+
+	if (!CachedHitSound && !CachedWeaponData.HitSound.IsNull())
+	{
+		CachedHitSound = CachedWeaponData.HitSound.LoadSynchronous();
+	}
+
+	if (CachedHitSound)
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, CachedHitSound, HitLocation);
+	}
 }
 
 FVector AP48WeaponBase::CalculateKnockbackDirection(const AActor* HitActor) const

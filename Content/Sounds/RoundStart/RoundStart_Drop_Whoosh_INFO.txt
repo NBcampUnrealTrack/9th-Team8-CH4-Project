@@ -1,0 +1,14 @@
+Round Start Drop Whoosh
+=======================
+
+Purpose: falling section at the beginning of a round
+Length: 0.72 seconds
+Format: 48 kHz, stereo, 16-bit PCM WAV
+Contents: one short rounded air burst with a subtle low push
+
+There is no descending whistle and no landing impact. Trigger this once at the
+moment the fall begins, then play the landing sound separately on ground contact.
+
+This is an original procedural sound created for this project on 2026-09-15.
+It contains no third-party samples or recordings and may be used, edited, and
+distributed as part of this game project without attribution.
