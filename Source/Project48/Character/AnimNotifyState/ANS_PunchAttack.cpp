@@ -13,11 +13,6 @@ void UANS_PunchAttack::NotifyBegin(USkeletalMeshComponent* MeshComp, UAnimSequen
 			Character->StartPunchAttack();
 		}
 	}
-	
-	if (GEngine)
-	{
-		GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, TEXT("Punch Start"));
-	}
 }
 
 void UANS_PunchAttack::NotifyEnd(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation, const FAnimNotifyEventReference& EventReference)
@@ -30,10 +25,5 @@ void UANS_PunchAttack::NotifyEnd(USkeletalMeshComponent* MeshComp, UAnimSequence
 		{
 			Character->StopPunchAttack();
 		}
-	}
-	
-	if (GEngine)
-	{
-		GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, TEXT("Punch End"));
 	}
 }
