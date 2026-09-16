@@ -574,7 +574,13 @@ void AP48PlayerCharacter::OnRightHandOverlap(
 		return;
 	}
 	
-	if (OtherComp != Cast<AP48PlayerCharacter>(OtherActor)->GetCapsuleComponent())
+	AP48PlayerCharacter* OtherCharacter = Cast<AP48PlayerCharacter>(OtherActor);
+	if (!OtherCharacter)
+	{
+		return;
+	}
+	
+	if (OtherComp != OtherCharacter->GetCapsuleComponent())
 	{
 		return;
 	}
