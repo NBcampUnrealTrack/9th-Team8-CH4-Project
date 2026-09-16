@@ -38,7 +38,7 @@ protected:
 
 	/** 게임 실행 중 사망 영역을 빨간 박스로 계속 표시합니다. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Death Floor|Debug")
-	bool bDrawDebugBounds = true;
+	bool bDrawDebugBounds = false;
 
 	TSet<TWeakObjectPtr<AP48PlayerCharacter>> TickDetectedPlayers;
 
