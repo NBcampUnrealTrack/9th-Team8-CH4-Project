@@ -4,8 +4,8 @@
 #include "Blueprint/UserWidget.h"
 #include "RoundResultWidget.generated.h"
 
-class UTextBlock;
 class AP48PlayerState;
+class UImage;
 
 UCLASS()
 class PROJECT48_API URoundResultWidget : public UUserWidget
@@ -18,9 +18,19 @@ protected:
 
 	UFUNCTION()
 	void HandleRoundResultChanged(AP48PlayerState* Winner, bool bIsDraw);
-
+	
+	// Image_RoundResult
 	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UTextBlock> TextBlock_Result; // "승리" / "패배" / "무승부"
+	TObjectPtr<UImage> Image_RoundResult; // "승리" / "패배" / "무승부"
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	TObjectPtr<UTexture2D> DrawTexture;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	TObjectPtr<UTexture2D> VictoryTexture;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	TObjectPtr<UTexture2D> DefeatTexture;
 
 private:
 	void ShowResult(AP48PlayerState* Winner, bool bIsDraw);

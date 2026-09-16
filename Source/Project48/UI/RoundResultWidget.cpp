@@ -1,5 +1,5 @@
 #include "RoundResultWidget.h"
-#include "Components/TextBlock.h"
+#include "Components/Image.h"
 #include "Project48/Game/P48GameStateBase.h"
 #include "Project48/Character/P48PlayerState.h"
 
@@ -44,21 +44,21 @@ void URoundResultWidget::HandleRoundResultChanged(AP48PlayerState* Winner, bool 
 
 void URoundResultWidget::ShowResult(AP48PlayerState* Winner, bool bIsDraw)
 {
-	if (IsValid(TextBlock_Result) == false) return;
+	if (IsValid(Image_RoundResult) == false) return;
 
 	const AP48PlayerState* LocalPS = Cast<AP48PlayerState>(GetOwningPlayerState());
 
 	if (bIsDraw)
 	{
-		TextBlock_Result->SetText(FText::FromString(TEXT("Draw")));
+		Image_RoundResult->SetBrushFromTexture(DrawTexture); // Draw
 	}
 	else if (IsValid(Winner) && Winner == LocalPS)
 	{
-		TextBlock_Result->SetText(FText::FromString(TEXT("Victory")));
+		Image_RoundResult->SetBrushFromTexture(VictoryTexture); // Victory
 	}
 	else
 	{
-		TextBlock_Result->SetText(FText::FromString(TEXT("Defeat")));
+		Image_RoundResult->SetBrushFromTexture(DefeatTexture); // Defeat
 	}
 
 	SetVisibility(ESlateVisibility::Visible);
