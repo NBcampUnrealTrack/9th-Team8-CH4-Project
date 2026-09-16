@@ -115,8 +115,8 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Lobby|Session", meta = (ClampMin = "2"))
 	int32 MaxLobbyPlayers = 8;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Lobby|Session", meta = (ClampMin = "1"))
-	int32 MaxLobbyRooms = 3;
+	// The lobby UI and dedicated game-server pool expose exactly three fixed room slots.
+	static constexpr int32 MaxLobbyRooms = 3;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Lobby|Travel")
 	TSoftObjectPtr<UWorld> GameMap;

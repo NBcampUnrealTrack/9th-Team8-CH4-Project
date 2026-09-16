@@ -78,8 +78,18 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Lobby")
 	TArray<FP48LobbyPlayerEntry> GetLobbyPlayersForRoom(int32 RoomId) const;
 
+	// Display slots are one-based for direct use by the eight fixed lobby UI slots.
+	// The host is placed first and the remaining players retain their replicated order.
+	UFUNCTION(BlueprintPure, Category = "Lobby|Players")
+	bool GetLobbyPlayerForRoomSlot(int32 RoomId, int32 SlotNumber,
+		FP48LobbyPlayerEntry& OutPlayer) const;
+
 	UFUNCTION(BlueprintPure, Category = "Lobby")
 	TArray<FP48LobbyRoomInfo> GetLobbyRooms() const;
+
+	// Fixed lobby slots are occupied only while their room info exists.
+	UFUNCTION(BlueprintPure, Category = "Lobby|Rooms")
+	bool IsLobbyRoomSlotOccupied(int32 RoomId) const;
 
 	UFUNCTION(BlueprintPure, Category = "Lobby")
 	FText GetLobbyPlayerListText() const;

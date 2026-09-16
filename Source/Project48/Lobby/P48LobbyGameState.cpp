@@ -25,9 +25,53 @@ TArray<FP48LobbyPlayerEntry> AP48LobbyGameState::GetLobbyPlayersForRoom(int32 Ro
 	});
 }
 
+bool AP48LobbyGameState::GetLobbyPlayerForRoomSlot(
+	int32 RoomId, int32 SlotNumber, FP48LobbyPlayerEntry& OutPlayer) const
+{
+	OutPlayer = FP48LobbyPlayerEntry{};
+	if (RoomId < 1 || SlotNumber < 1 || SlotNumber > 8)
+	{
+		return false;
+	}
+
+	TArray<const FP48LobbyPlayerEntry*> RoomPlayers;
+	RoomPlayers.Reserve(LobbyPlayers.Num());
+	for (const FP48LobbyPlayerEntry& Entry : LobbyPlayers)
+	{
+		if (Entry.RoomId == RoomId)
+		{
+			RoomPlayers.Add(&Entry);
+		}
+	}
+
+	RoomPlayers.StableSort([](const FP48LobbyPlayerEntry& Left,
+		const FP48LobbyPlayerEntry& Right)
+	{
+		return Left.bIsHost && !Right.bIsHost;
+	});
+
+	const int32 PlayerIndex = SlotNumber - 1;
+	if (!RoomPlayers.IsValidIndex(PlayerIndex))
+	{
+		return false;
+	}
+
+	OutPlayer = *RoomPlayers[PlayerIndex];
+	return true;
+}
+
 TArray<FP48LobbyRoomInfo> AP48LobbyGameState::GetLobbyRooms() const
 {
 	return LobbyRooms;
+}
+
+bool AP48LobbyGameState::IsLobbyRoomSlotOccupied(int32 RoomId) const
+{
+	return RoomId >= 1 && RoomId <= 3
+		&& LobbyRooms.ContainsByPredicate([RoomId](const FP48LobbyRoomInfo& Room)
+		{
+			return Room.RoomId == RoomId;
+		});
 }
 
 FText AP48LobbyGameState::GetLobbyPlayerListText() const
