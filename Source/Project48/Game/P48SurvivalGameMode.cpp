@@ -13,8 +13,15 @@
 #include "Rule/P48BestOfRoundsMatchFlowRule.h"
 #include "Rule/P48LastPlayerStandingCondition.h"
 #include "TimerManager.h"
+#include "HAL/PlatformMisc.h"
 #include "Kismet/GameplayStatics.h"
 #include "Project48/Character/P48PlayerController.h"
+
+namespace P48ServerReload
+{
+	constexpr int32 MaxAttempts = 5;
+	constexpr float MaxRetryDelaySeconds = 10.0f;
+}
 
 AP48SurvivalGameMode::AP48SurvivalGameMode()
 {
@@ -411,6 +418,12 @@ void AP48SurvivalGameMode::FinishMatch(AP48PlayerState* Winner)
 		FMath::Max(0.1f, ReturnLobbyDelay), false);
 }
 
+void AP48SurvivalGameMode::AbortMatchForMapGenerationFailure()
+{
+	UE_LOG(LogTemp, Error, TEXT("[P48PCG] Survival match aborted after client map-generation timeout."));
+	FinishMatch(nullptr);
+}
+
 void AP48SurvivalGameMode::RequestLobbyReturn()
 {
 	if (!HasAuthority()) return;
@@ -426,14 +439,71 @@ void AP48SurvivalGameMode::TryResetServer()
 	// 복귀 요청만 보낸 상태에서 초기화하지 않고, 관전자를 포함한 접속 종료를 기다린다.
 	if (GetWorld()->GetNumPlayerControllers() != 0) return;
 	GetWorldTimerManager().ClearTimer(ServerResetTimerHandle);
-	GetGameInstance()->GetSubsystem<UP48GameServerLifecycleSubsystem>()->BeginReload();
-	bUseSeamlessTravel = false;
-	const FString Map = GetWorld()->GetOutermost()->GetName();
-	// Absolute travel로 이전 매치의 URL 옵션을 재사용하지 않는다.
-	if (!GetWorld()->ServerTravel(Map, true))
+	BeginServerReload();
+}
+
+void AP48SurvivalGameMode::BeginServerReload()
+{
+	if (!HasAuthority() || bServerReloadInProgress) return;
+	UWorld* World = GetWorld();
+	UP48GameServerLifecycleSubsystem* Lifecycle = GetGameInstance()
+		? GetGameInstance()->GetSubsystem<UP48GameServerLifecycleSubsystem>() : nullptr;
+	if (!World || !Lifecycle)
 	{
-		UE_LOG(LogTemp, Error, TEXT("[GameServer] Could not reload %s; server remains unavailable."), *Map);
+		UE_LOG(LogTemp, Error,
+			TEXT("[GameServer] Cannot begin server reload; exiting for service restart."));
+		FPlatformMisc::RequestExitWithStatus(false, 1);
+		return;
 	}
+
+	bServerReloadInProgress = true;
+	ServerReloadAttempt = 0;
+	ServerReloadMap = World->GetOutermost()->GetName();
+	Lifecycle->BeginReload();
+	AttemptServerReload();
+}
+
+void AP48SurvivalGameMode::AttemptServerReload()
+{
+	if (!bServerReloadInProgress) return;
+	UWorld* World = GetWorld();
+	if (!World || ServerReloadMap.IsEmpty())
+	{
+		UE_LOG(LogTemp, Error,
+			TEXT("[GameServer] Reload world or map is unavailable; exiting for service restart."));
+		FPlatformMisc::RequestExitWithStatus(false, 1);
+		return;
+	}
+
+	++ServerReloadAttempt;
+	bUseSeamlessTravel = false;
+	// Absolute travel로 이전 매치의 URL 옵션을 재사용하지 않는다.
+	if (World->ServerTravel(ServerReloadMap, true))
+	{
+		UE_LOG(LogTemp, Display,
+			TEXT("[GameServer] Server reload travel accepted. Map=%s Attempt=%d"),
+			*ServerReloadMap, ServerReloadAttempt);
+		return;
+	}
+
+	if (ServerReloadAttempt >= P48ServerReload::MaxAttempts)
+	{
+		UE_LOG(LogTemp, Error,
+			TEXT("[GameServer] Server reload failed after %d attempts. Map=%s; exiting for service restart."),
+			ServerReloadAttempt, *ServerReloadMap);
+		FPlatformMisc::RequestExitWithStatus(false, 1);
+		return;
+	}
+
+	const float RetryDelay = FMath::Min(
+		FMath::Pow(2.0f, ServerReloadAttempt - 1),
+		P48ServerReload::MaxRetryDelaySeconds);
+	UE_LOG(LogTemp, Warning,
+		TEXT("[GameServer] Server reload failed. Map=%s Attempt=%d/%d RetryIn=%.1fs"),
+		*ServerReloadMap, ServerReloadAttempt,
+		P48ServerReload::MaxAttempts, RetryDelay);
+	GetWorldTimerManager().SetTimer(ServerReloadRetryTimerHandle, this,
+		&ThisClass::AttemptServerReload, RetryDelay, false);
 }
 
 void AP48SurvivalGameMode::ClearMatchTimers()
@@ -441,6 +511,7 @@ void AP48SurvivalGameMode::ClearMatchTimers()
 	Super::ClearMatchTimers();
 	GetWorldTimerManager().ClearTimer(ReturnLobbyTimerHandle);
 	GetWorldTimerManager().ClearTimer(ServerResetTimerHandle);
+	GetWorldTimerManager().ClearTimer(ServerReloadRetryTimerHandle);
 	GetWorldTimerManager().ClearTimer(RoundEndCheckTimerHandle);
 	GetWorldTimerManager().ClearTimer(LogoutCheckTimerHandle);
 	GetWorldTimerManager().ClearTimer(RoundTimeLimitTimerHandle);

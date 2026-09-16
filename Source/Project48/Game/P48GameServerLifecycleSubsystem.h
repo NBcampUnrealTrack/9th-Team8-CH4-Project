@@ -17,7 +17,7 @@ public:
 	FString AcceptMatch(const FString& Options, bool bCommit = true);
 	int32 GetExpectedPlayers() const { return ExpectedPlayers; }
 	void EndMatch();
-	void BeginReload() { bReloading = true; }
+	void BeginReload();
 	void WorldReady();
 
 private:
@@ -34,6 +34,7 @@ private:
 	bool bEndAcknowledged = false;
 	bool bReloading = false;
 	bool bWorldReady = false;
+	double ReloadDeadline = 0.0;
 	double NextAttempt = 0;
 	FHttpRequestPtr Request;
 	FTSTicker::FDelegateHandle TickerHandle;

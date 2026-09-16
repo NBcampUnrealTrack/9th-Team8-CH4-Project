@@ -22,6 +22,7 @@
 
 
 #include "GameFramework/Pawn.h"
+#include "GameFramework/GameSession.h"
 #include "GameFramework/SpectatorPawn.h"
 #include "GameFramework/PlayerController.h"
 
@@ -61,8 +62,26 @@ void AP48GameModeBase::StartPlay()
 FString AP48GameModeBase::InitNewPlayer(APlayerController* NewPlayerController,
 	const FUniqueNetIdRepl& UniqueId, const FString& Options, const FString& Portal)
 {
+	const bool bHasLobbyMatchId = UGameplayStatics::HasOption(Options, TEXT("LobbyMatchId"));
+	FGuid MemberId;
+	if (bHasLobbyMatchId
+		&& !FGuid::Parse(UGameplayStatics::ParseOption(Options, TEXT("LobbyMemberId")), MemberId))
+	{
+		return TEXT("Invalid lobby member ID.");
+	}
+	if (bHasLobbyMatchId)
+	{
+		for (const TPair<TWeakObjectPtr<APlayerController>, FGuid>& Pair : MemberIdsByController)
+		{
+			if (Pair.Key.IsValid() && Pair.Value == MemberId)
+			{
+				return TEXT("This lobby member is already connected.");
+			}
+		}
+	}
+
 	UP48GameServerLifecycleSubsystem* Lifecycle = GetGameInstance()->GetSubsystem<UP48GameServerLifecycleSubsystem>();
-	if (!bMapGenerationRequested && UGameplayStatics::HasOption(Options, TEXT("LobbyMatchId"))
+	if (!bMapGenerationRequested && bHasLobbyMatchId
 		&& !UGameplayStatics::HasOption(Options, TEXT("ExpectedPlayers")))
 	{
 		return TEXT("Spectators can join after the initial participants arrive.");
@@ -72,9 +91,15 @@ FString AP48GameModeBase::InitNewPlayer(APlayerController* NewPlayerController,
 	const FString SuperError = Super::InitNewPlayer(NewPlayerController, UniqueId, Options, Portal);
 	if (!SuperError.IsEmpty()) return SuperError;
 	Lifecycle->AcceptMatch(Options);
-	if (!bMapGenerationRequested && Lifecycle->GetExpectedPlayers() > 0)
+	if (bHasLobbyMatchId)
 	{
-		ConfirmedPlayerCount = Lifecycle->GetExpectedPlayers();
+		bLobbyManagedMatch = true;
+		MemberIdsByController.Add(NewPlayerController, MemberId);
+		ArrivedMemberIds.Add(MemberId);
+		if (!bInitialRosterFinalized && Lifecycle->GetExpectedPlayers() > 0)
+		{
+			ConfirmedPlayerCount = Lifecycle->GetExpectedPlayers();
+		}
 	}
 	return FString();
 }
@@ -83,7 +108,11 @@ void AP48GameModeBase::HandleStartingNewPlayer_Implementation(APlayerController*
 {
 	if (!NewPlayer) { return; }
 	const AP48PlayerState* Player = NewPlayer->GetPlayerState<AP48PlayerState>();
-	if (bMapGenerationRequested && (!Player || !Player->IsMatchParticipant())) { return; }
+	if ((bInitialRosterFinalized || bMapGenerationRequested)
+		&& (!Player || !Player->IsMatchParticipant()))
+	{
+		return;
+	}
 	if (AP48PCGSeedState* SeedState = P48MapReadiness::FindSeedState(GetWorld())) { SeedState->NotifyControllerJoined(NewPlayer); }
 	const AP48GameStateBase* GS = GetGameState<AP48GameStateBase>();
 	if (bWaitingForRoundMap || (GS && GS->MatchPhase != EP48MatchPhase::Waiting
@@ -195,8 +224,9 @@ void AP48GameModeBase::OnPostLogin(AController* NewPlayer)
 	
 	UE_LOG(LogTemp, Warning, TEXT("Player Login: %s"), *GetNameSafe(NewPlayer));
 	UE_LOG(LogTemp, Log, TEXT("Player Count: %d"), GetNumPlayers());
-	
+
 	AP48GameStateBase* P48GameState = GetGameState<AP48GameStateBase>();
+
 	if (IsValid(P48GameState) == false)
 	{
 		return;
@@ -208,24 +238,309 @@ void AP48GameModeBase::OnPostLogin(AController* NewPlayer)
 		return;
 	}
 
-	// 맵 생성 요청 이후 접속자는 현재 매치에 참가시키지 않는다.
-	if (bMapGenerationRequested || P48GameState->MatchPhase != EP48MatchPhase::Waiting)
+	APlayerController* PlayerController = Cast<APlayerController>(NewPlayer);
+	AP48PlayerController* P48PlayerController = Cast<AP48PlayerController>(NewPlayer);
+	const bool bJoinedAsSpectator = bLobbyManagedMatch && bInitialRosterFinalized
+		&& !IsFinalizedParticipant(PlayerController);
+
+	// 30초 명단 확정 이후 접속자는 접속 자체는 허용하되 현재 매치에는 참가시키지 않는다.
+	if (bJoinedAsSpectator || bMapGenerationRequested
+		|| P48GameState->MatchPhase != EP48MatchPhase::Waiting)
 	{
 		P48PlayerState->SetMatchParticipant(false);
 		P48PlayerState->SetAlive(false);
+		if (IsValid(PlayerController))
+		{
+			StartPlayerSpectating(PlayerController);
+		}
+		if (IsValid(P48PlayerController))
+		{
+			P48PlayerController->Client_ConfirmGameServerArrival(true);
+		}
 
 		UE_LOG(LogTemp,Warning,TEXT("[Server] %s joined as a spectator for the current match"),*P48PlayerState->GetPlayerName());
 
 		return;
 	}
-	
+	if (bLobbyManagedMatch && bInitialRosterFinalized)
+	{
+		P48PlayerState->SetMatchParticipant(true);
+		P48PlayerState->SetAlive(true);
+	}
+
+	if (bLobbyManagedMatch)
+	{
+		StartInitialArrivalTimer();
+		TryFinalizeInitialRoster();
+	}
+	if (IsValid(P48PlayerController))
+	{
+		P48PlayerController->Client_ConfirmGameServerArrival(false);
+	}
 	CheckStartCondition();
+}
+
+bool AP48GameModeBase::ApplyPCGReadyParticipantRoster(
+	const TArray<APlayerController*>& ReadyControllers,
+	TArray<APlayerController*>& OutExcludedControllers,
+	const bool bFinalDeadline)
+{
+	OutExcludedControllers.Reset();
+	if (!HasAuthority()) return false;
+
+	TSet<TWeakObjectPtr<APlayerController>> ReadySet;
+	for (APlayerController* Controller : ReadyControllers)
+	{
+		const AP48PlayerState* PlayerState = IsValid(Controller)
+			? Controller->GetPlayerState<AP48PlayerState>() : nullptr;
+		if (IsPCGRequiredParticipant(PlayerState))
+		{
+			ReadySet.Add(Controller);
+		}
+	}
+
+	if (ReadySet.Num() < MinPlayersToStart)
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("[P48PCG] Client readiness deadline: only %d/%d required players are ready."),
+			ReadySet.Num(), MinPlayersToStart);
+		if (bFinalDeadline)
+		{
+			AbortMatchForMapGenerationFailure();
+		}
+		return false;
+	}
+
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		APlayerController* Controller = It->Get();
+		AP48PlayerState* PlayerState = IsValid(Controller)
+			? Controller->GetPlayerState<AP48PlayerState>() : nullptr;
+		if (!IsPCGRequiredParticipant(PlayerState)
+			|| ReadySet.Contains(Controller))
+		{
+			continue;
+		}
+
+		PlayerState->SetMatchParticipant(false);
+		PlayerState->SetAlive(false);
+		OutExcludedControllers.Add(Controller);
+		if (APawn* Pawn = Controller->GetPawn())
+		{
+			Controller->UnPossess();
+			Pawn->Destroy();
+		}
+		for (const TPair<TWeakObjectPtr<APlayerController>, FGuid>& Pair : MemberIdsByController)
+		{
+			if (Pair.Key.Get() == Controller)
+			{
+				FinalizedParticipantIds.Remove(Pair.Value);
+				break;
+			}
+		}
+	}
+
+	ConfirmedPlayerCount = ReadySet.Num();
+	UE_LOG(LogTemp, Warning,
+		TEXT("[P48PCG] Continuing with %d ready participant(s); deferred clients=%d."),
+		ConfirmedPlayerCount, OutExcludedControllers.Num());
+	if (!UP48GameplayMessageLibrary::Broadcast(
+		this,
+		P48GameplayTags::Match::PlayerCountChanged,
+		FP48MatchPlayerCountMessage(ConfirmedPlayerCount)))
+	{
+		UE_LOG(LogTemp, Error, TEXT("[P48PCG] Failed to reduce the required player count."));
+		if (bFinalDeadline) AbortMatchForMapGenerationFailure();
+		return false;
+	}
+	CheckStartCondition();
+	return true;
+}
+
+void AP48GameModeBase::HandleLatePCGClientReady(APlayerController* PlayerController)
+{
+	if (!HasAuthority() || !IsValid(PlayerController)) return;
+	AP48PlayerState* PlayerState = PlayerController->GetPlayerState<AP48PlayerState>();
+	if (!IsValid(PlayerState) || PlayerState->IsMatchParticipant()) return;
+
+	if (APawn* Pawn = PlayerController->GetPawn())
+	{
+		PlayerController->UnPossess();
+		Pawn->Destroy();
+	}
+	PlayerState->SetAlive(false);
+	StartPlayerSpectating(PlayerController);
+	UE_LOG(LogTemp, Warning, TEXT("[P48PCG] %s completed the map late and joined as spectator."),
+		*PlayerState->GetPlayerName());
+}
+
+void AP48GameModeBase::ExpelPCGUnreadyPlayer(APlayerController* PlayerController)
+{
+	AP48PlayerController* P48Controller = Cast<AP48PlayerController>(PlayerController);
+	if (!HasAuthority() || !IsValid(P48Controller)) return;
+
+	P48Controller->Client_ReturnToLobbyForMapGenerationFailure();
+	TWeakObjectPtr<AP48PlayerController> WeakController = P48Controller;
+	FTimerHandle KickFallbackTimer;
+	GetWorldTimerManager().SetTimer(KickFallbackTimer,
+		FTimerDelegate::CreateWeakLambda(this, [this, WeakController]()
+		{
+			if (AP48PlayerController* Controller = WeakController.Get();
+				Controller && GameSession)
+			{
+				GameSession->KickPlayer(Controller,
+					FText::FromString(TEXT("MapGenerationTimeout")));
+			}
+		}), 5.0f, false);
+}
+
+void AP48GameModeBase::AbortMatchForMapGenerationFailure()
+{
+	UE_LOG(LogTemp, Error,
+		TEXT("[P48PCG] Not enough clients generated the map; aborting the match."));
+	ClearMatchTimers();
+	if (AP48GameStateBase* P48GameState = GetGameState<AP48GameStateBase>())
+	{
+		P48GameState->SetMatchPhase(EP48MatchPhase::MatchEnd);
+		P48GameState->RequestLobbyReturn();
+	}
+	if (UP48GameServerLifecycleSubsystem* Lifecycle =
+		GetGameInstance()->GetSubsystem<UP48GameServerLifecycleSubsystem>())
+	{
+		Lifecycle->EndMatch();
+	}
+}
+
+bool AP48GameModeBase::IsPCGRequiredParticipant(const AP48PlayerState* PlayerState) const
+{
+	return IsRoundSpawnParticipant(PlayerState);
+}
+
+void AP48GameModeBase::StartInitialArrivalTimer()
+{
+	if (!HasAuthority() || !bLobbyManagedMatch || bInitialRosterFinalized
+		|| GetWorldTimerManager().IsTimerActive(InitialArrivalTimerHandle))
+	{
+		return;
+	}
+
+	GetWorldTimerManager().SetTimer(InitialArrivalTimerHandle, this,
+		&ThisClass::HandleInitialArrivalTimeout, InitialArrivalTimeoutSeconds, false);
+	UE_LOG(LogTemp, Display, TEXT("[InitialRoster] Waiting %.1f seconds for %d player(s)."),
+		InitialArrivalTimeoutSeconds, ConfirmedPlayerCount);
+}
+
+void AP48GameModeBase::HandleInitialArrivalTimeout()
+{
+	bInitialArrivalDeadlineExpired = true;
+	UE_LOG(LogTemp, Warning, TEXT("[InitialRoster] Arrival deadline expired. Arrived=%d Expected=%d"),
+		GetInitialArrivalCount(), ConfirmedPlayerCount);
+	TryFinalizeInitialRoster();
+}
+
+void AP48GameModeBase::TryFinalizeInitialRoster()
+{
+	if (!bLobbyManagedMatch || bInitialRosterFinalized) return;
+
+	const int32 ArrivalCount = GetInitialArrivalCount();
+	const bool bAllExpectedPlayersArrived = ConfirmedPlayerCount > 0
+		&& ArrivalCount >= ConfirmedPlayerCount;
+	const bool bCanStartAfterDeadline = bInitialArrivalDeadlineExpired
+		&& ArrivalCount >= MinPlayersToStart;
+	if (!bAllExpectedPlayersArrived && !bCanStartAfterDeadline)
+	{
+		if (bInitialArrivalDeadlineExpired)
+		{
+			UE_LOG(LogTemp, Warning,
+				TEXT("[InitialRoster] Deadline passed, but at least %d player(s) are required. Arrived=%d"),
+				MinPlayersToStart, ArrivalCount);
+		}
+		return;
+	}
+
+	FinalizeInitialRoster();
+}
+
+void AP48GameModeBase::FinalizeInitialRoster()
+{
+	if (bInitialRosterFinalized) return;
+
+	FinalizedParticipantIds.Reset();
+	for (const TPair<TWeakObjectPtr<APlayerController>, FGuid>& Pair : MemberIdsByController)
+	{
+		if (Pair.Key.IsValid() && ArrivedMemberIds.Contains(Pair.Value))
+		{
+			FinalizedParticipantIds.Add(Pair.Value);
+		}
+	}
+
+	ConfirmedPlayerCount = FinalizedParticipantIds.Num();
+	if (ConfirmedPlayerCount < MinPlayersToStart) return;
+
+	bInitialRosterFinalized = true;
+	GetWorldTimerManager().ClearTimer(InitialArrivalTimerHandle);
+	UE_LOG(LogTemp, Warning, TEXT("[InitialRoster] Roster finalized with %d participant(s)."),
+		ConfirmedPlayerCount);
+	CheckStartCondition();
+}
+
+int32 AP48GameModeBase::GetInitialArrivalCount() const
+{
+	int32 Count = 0;
+	for (const TPair<TWeakObjectPtr<APlayerController>, FGuid>& Pair : MemberIdsByController)
+	{
+		if (Pair.Key.IsValid() && ArrivedMemberIds.Contains(Pair.Value))
+		{
+			++Count;
+		}
+	}
+	return Count;
+}
+
+int32 AP48GameModeBase::GetFinalizedParticipantCount() const
+{
+	int32 Count = 0;
+	for (const TPair<TWeakObjectPtr<APlayerController>, FGuid>& Pair : MemberIdsByController)
+	{
+		if (Pair.Key.IsValid() && FinalizedParticipantIds.Contains(Pair.Value))
+		{
+			++Count;
+		}
+	}
+	return Count;
+}
+
+bool AP48GameModeBase::IsFinalizedParticipant(
+	const APlayerController* PlayerController) const
+{
+	for (const TPair<TWeakObjectPtr<APlayerController>, FGuid>& Pair : MemberIdsByController)
+	{
+		if (Pair.Key.Get() == PlayerController)
+		{
+			return FinalizedParticipantIds.Contains(Pair.Value);
+		}
+	}
+	return false;
 }
 
 void AP48GameModeBase::Logout(AController* Exit)
 {
-	InputBlockedControllers.Remove(Cast<APlayerController>(Exit));
-	PlayersWaitingForMap.Remove(Cast<APlayerController>(Exit));
+	APlayerController* ExitingPlayerController = Cast<APlayerController>(Exit);
+	InputBlockedControllers.Remove(ExitingPlayerController);
+	PlayersWaitingForMap.Remove(ExitingPlayerController);
+	if (const FGuid* MemberId = MemberIdsByController.Find(ExitingPlayerController))
+	{
+		if (!bInitialRosterFinalized)
+		{
+			ArrivedMemberIds.Remove(*MemberId);
+		}
+		else if (bMapGenerationRequested)
+		{
+			// 게임 진행 중 이탈한 참가자는 재접속 시 현재 매치의 관전자로 처리한다.
+			FinalizedParticipantIds.Remove(*MemberId);
+		}
+	}
+	MemberIdsByController.Remove(ExitingPlayerController);
     const FString ExitingPlayerName = GetNameSafe(Exit);
     const int32 RemainingPlayerCount = FMath::Max(0, GetNumPlayers() - 1);
 
@@ -327,13 +642,19 @@ void AP48GameModeBase::CheckStartCondition()
 	{
 		return;
 	}
+
+	if (bLobbyManagedMatch && !bInitialRosterFinalized)
+	{
+		return;
+	}
 	
 	if (ConfirmedPlayerCount <= 0)
 	{
 		return;
 	}
 
-	int32 ArrivedPlayerCount = GetNumPlayers();
+	int32 ArrivedPlayerCount = bLobbyManagedMatch
+		? GetFinalizedParticipantCount() : GetNumPlayers();
 	if (bMapGenerationRequested)
 	{
 		ArrivedPlayerCount = 0;
@@ -434,8 +755,16 @@ void AP48GameModeBase::ConfirmMatchParticipants()
 			continue;
 		}
 		
-		P48PlayerState->SetMatchParticipant(true);
-		ParticipantCount++;
+		const APlayerController* PlayerController =
+			Cast<APlayerController>(P48PlayerState->GetOwner());
+		const bool bIsParticipant = !bLobbyManagedMatch
+			|| IsFinalizedParticipant(PlayerController);
+		P48PlayerState->SetMatchParticipant(bIsParticipant);
+		P48PlayerState->SetAlive(bIsParticipant);
+		if (bIsParticipant)
+		{
+			ParticipantCount++;
+		}
 	}
 
 	UE_LOG(LogTemp,Warning,TEXT("[Server] Match participants confirmed: %d"),ParticipantCount);
@@ -792,6 +1121,7 @@ bool AP48GameModeBase::ShouldCancelCountdown(int32 RemainingParticipants) const
 void AP48GameModeBase::ClearMatchTimers()
 {
 	bWaitingForRoundMap = false;
+	GetWorldTimerManager().ClearTimer(InitialArrivalTimerHandle);
 	GetWorldTimerManager().ClearTimer(RoundMapPreparationTimerHandle);
 	GetWorldTimerManager().ClearTimer(CountdownTimerHandle);
 	GetWorldTimerManager().ClearTimer(RoundEndTimerHandle);

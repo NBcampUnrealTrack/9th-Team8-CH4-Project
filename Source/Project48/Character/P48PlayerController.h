@@ -44,6 +44,13 @@ public:
 	UFUNCTION(Client, Reliable)
 	void Client_SetPlayInputBlocked(bool bBlocked);
 
+	/** 게임 서버 도착 확인을 받아 로비에서 시작한 재접속 시도를 종료합니다. */
+	UFUNCTION(Client, Reliable)
+	void Client_ConfirmGameServerArrival(bool bJoinedAsSpectator);
+
+	UFUNCTION(Client, Reliable)
+	void Client_ReturnToLobbyForMapGenerationFailure();
+
 protected:
 	UFUNCTION(Server, Reliable)
 	void Server_ReportMapGenerationComplete(int32 GenerationId);

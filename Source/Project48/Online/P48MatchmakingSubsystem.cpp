@@ -18,6 +18,7 @@ void UP48MatchmakingSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 void UP48MatchmakingSubsystem::Deinitialize()
 {
+	ClearDestroySessionTimeout();
 	if (SessionInterface.IsValid())
 	{
 		if (CreateSessionCompleteDelegateHandle.IsValid())
@@ -47,6 +48,8 @@ void UP48MatchmakingSubsystem::Deinitialize()
 
 	SessionSearch.Reset();
 	SessionSearchResults.Reset();
+	DestroySessionPurpose = EP48DestroySessionPurpose::None;
+	PendingDestroySessionName = NAME_None;
 	bJoinFirstResultAfterSearch = false;
 	SessionInterface.Reset();
 	Super::Deinitialize();
@@ -124,21 +127,8 @@ bool UP48MatchmakingSubsystem::DestroySession()
 		return false;
 	}
 
-	DestroySessionCompleteDelegateHandle =
-		SessionInterface->AddOnDestroySessionCompleteDelegate_Handle(
-			FOnDestroySessionCompleteDelegate::CreateUObject(
-				this,
-				&ThisClass::HandleDestroySessionComplete));
-
-	if (SessionInterface->DestroySession(NAME_GameSession) == false)
-	{
-		SessionInterface->ClearOnDestroySessionCompleteDelegate_Handle(
-			DestroySessionCompleteDelegateHandle);
-		DestroySessionCompleteDelegateHandle.Reset();
-		return false;
-	}
-
-	return true;
+	return BeginDestroySession(
+		NAME_GameSession, EP48DestroySessionPurpose::UserLeave);
 }
 
 bool UP48MatchmakingSubsystem::HasActiveSession() const
@@ -257,16 +247,36 @@ void UP48MatchmakingSubsystem::HandleCreateSessionComplete(
 }
 
 void UP48MatchmakingSubsystem::HandleDestroySessionComplete(
-	FName,
+	FName SessionName,
 	bool bWasSuccessful)
 {
+	const EP48DestroySessionPurpose CompletedPurpose = DestroySessionPurpose;
+	const FName CompletedSessionName = PendingDestroySessionName.IsNone()
+		? SessionName : PendingDestroySessionName;
+	ClearDestroySessionTimeout();
 	if (SessionInterface.IsValid())
 	{
 		SessionInterface->ClearOnDestroySessionCompleteDelegate_Handle(
 			DestroySessionCompleteDelegateHandle);
 	}
 	DestroySessionCompleteDelegateHandle.Reset();
-	OnLeaveSessionCompleted.Broadcast(bWasSuccessful);
+	ForceRemoveNamedSession(CompletedSessionName);
+	const bool bSessionRemoved = !SessionInterface.IsValid()
+		|| SessionInterface->GetNamedSession(CompletedSessionName) == nullptr;
+	DestroySessionPurpose = EP48DestroySessionPurpose::None;
+	PendingDestroySessionName = NAME_None;
+
+	if (CompletedPurpose == EP48DestroySessionPurpose::JoinFailureCleanup)
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("[Matchmaking] Failed Join session cleanup completed. BackendSuccess=%d Removed=%d"),
+			bWasSuccessful, bSessionRemoved);
+		OnJoinSessionCompleted.Broadcast(false);
+	}
+	else if (CompletedPurpose == EP48DestroySessionPurpose::UserLeave)
+	{
+		OnLeaveSessionCompleted.Broadcast(bWasSuccessful && bSessionRemoved);
+	}
 }
 
 void UP48MatchmakingSubsystem::HandleFindSessionsComplete(bool bWasSuccessful)
@@ -336,29 +346,151 @@ void UP48MatchmakingSubsystem::HandleJoinSessionComplete(
 	}
 	JoinSessionCompleteDelegateHandle.Reset();
 
-	bool bWasSuccessful = Result == EOnJoinSessionCompleteResult::Success;
+	if (Result != EOnJoinSessionCompleteResult::Success)
+	{
+		if (SessionInterface.IsValid()
+			&& SessionInterface->GetNamedSession(SessionName) != nullptr)
+		{
+			CleanupJoinedSessionAfterTravelFailure(
+				SessionName, TEXT("Join callback returned a failure with a Named Session present"));
+			return;
+		}
+		OnJoinSessionCompleted.Broadcast(false);
+		return;
+	}
+
 	FString ConnectString;
-	if (bWasSuccessful)
+	if (!SessionInterface.IsValid()
+		|| !SessionInterface->GetResolvedConnectString(SessionName, ConnectString)
+		|| ConnectString.TrimStartAndEnd().IsEmpty())
 	{
-		bWasSuccessful = SessionInterface.IsValid()
-			&& SessionInterface->GetResolvedConnectString(SessionName, ConnectString);
+		CleanupJoinedSessionAfterTravelFailure(
+			SessionName, TEXT("Connect string resolution failed"));
+		return;
 	}
 
-	if (bWasSuccessful)
+	APlayerController* PlayerController =
+		GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr;
+	if (!IsValid(PlayerController) || !PlayerController->IsLocalController())
 	{
-		APlayerController* PlayerController =
-			GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr;
-		if (IsValid(PlayerController))
-		{
-			PlayerController->ClientTravel(ConnectString, TRAVEL_Absolute);
-		}
-		else
-		{
-			bWasSuccessful = false;
-		}
+		CleanupJoinedSessionAfterTravelFailure(
+			SessionName, TEXT("Local PlayerController was not available"));
+		return;
 	}
 
-	OnJoinSessionCompleted.Broadcast(bWasSuccessful);
+	PlayerController->ClientTravel(ConnectString, TRAVEL_Absolute);
+	OnJoinSessionCompleted.Broadcast(true);
+}
+
+bool UP48MatchmakingSubsystem::BeginDestroySession(
+	FName SessionName,
+	const EP48DestroySessionPurpose Purpose)
+{
+	if (!SessionInterface.IsValid() || Purpose == EP48DestroySessionPurpose::None)
+	{
+		return false;
+	}
+	if (SessionName.IsNone()) SessionName = NAME_GameSession;
+	DestroySessionPurpose = Purpose;
+	PendingDestroySessionName = SessionName;
+	DestroySessionCompleteDelegateHandle =
+		SessionInterface->AddOnDestroySessionCompleteDelegate_Handle(
+			FOnDestroySessionCompleteDelegate::CreateUObject(
+				this, &ThisClass::HandleDestroySessionComplete));
+
+	if (!SessionInterface->DestroySession(SessionName))
+	{
+		SessionInterface->ClearOnDestroySessionCompleteDelegate_Handle(
+			DestroySessionCompleteDelegateHandle);
+		DestroySessionCompleteDelegateHandle.Reset();
+		ForceRemoveNamedSession(SessionName);
+		DestroySessionPurpose = EP48DestroySessionPurpose::None;
+		PendingDestroySessionName = NAME_None;
+		UE_LOG(LogTemp, Error,
+			TEXT("[Matchmaking] DestroySession could not start. Session=%s Purpose=%d"),
+			*SessionName.ToString(), static_cast<int32>(Purpose));
+		if (Purpose == EP48DestroySessionPurpose::JoinFailureCleanup)
+		{
+			OnJoinSessionCompleted.Broadcast(false);
+		}
+		return false;
+	}
+	// 일부 OnlineSubsystem은 Destroy 완료 콜백을 호출 스택 안에서 즉시 실행할 수 있다.
+	// 그 경우 완료 처리 후 고아 watchdog을 등록하지 않는다.
+	if (DestroySessionPurpose != Purpose
+		|| !DestroySessionCompleteDelegateHandle.IsValid())
+	{
+		return true;
+	}
+
+	DestroySessionTimeoutHandle = FTSTicker::GetCoreTicker().AddTicker(
+		FTickerDelegate::CreateUObject(this, &ThisClass::HandleDestroySessionTimeout),
+		10.0f);
+	return true;
+}
+
+void UP48MatchmakingSubsystem::CleanupJoinedSessionAfterTravelFailure(
+	FName SessionName,
+	const TCHAR* Reason)
+{
+	if (SessionName.IsNone()) SessionName = NAME_GameSession;
+	UE_LOG(LogTemp, Error,
+		TEXT("[Matchmaking] Join succeeded but travel preparation failed: %s. Session=%s"),
+		Reason ? Reason : TEXT("Unknown"), *SessionName.ToString());
+	if (!SessionInterface.IsValid()
+		|| SessionInterface->GetNamedSession(SessionName) == nullptr)
+	{
+		OnJoinSessionCompleted.Broadcast(false);
+		return;
+	}
+	BeginDestroySession(SessionName, EP48DestroySessionPurpose::JoinFailureCleanup);
+}
+
+bool UP48MatchmakingSubsystem::HandleDestroySessionTimeout(float)
+{
+	DestroySessionTimeoutHandle.Reset();
+	const EP48DestroySessionPurpose TimedOutPurpose = DestroySessionPurpose;
+	const FName TimedOutSessionName = PendingDestroySessionName.IsNone()
+		? NAME_GameSession : PendingDestroySessionName;
+	if (SessionInterface.IsValid() && DestroySessionCompleteDelegateHandle.IsValid())
+	{
+		SessionInterface->ClearOnDestroySessionCompleteDelegate_Handle(
+			DestroySessionCompleteDelegateHandle);
+	}
+	DestroySessionCompleteDelegateHandle.Reset();
+	ForceRemoveNamedSession(TimedOutSessionName);
+	DestroySessionPurpose = EP48DestroySessionPurpose::None;
+	PendingDestroySessionName = NAME_None;
+	UE_LOG(LogTemp, Error,
+		TEXT("[Matchmaking] DestroySession timed out; removed local Named Session. Session=%s"),
+		*TimedOutSessionName.ToString());
+	if (TimedOutPurpose == EP48DestroySessionPurpose::JoinFailureCleanup)
+	{
+		OnJoinSessionCompleted.Broadcast(false);
+	}
+	else if (TimedOutPurpose == EP48DestroySessionPurpose::UserLeave)
+	{
+		OnLeaveSessionCompleted.Broadcast(false);
+	}
+	return false;
+}
+
+void UP48MatchmakingSubsystem::ClearDestroySessionTimeout()
+{
+	if (DestroySessionTimeoutHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(DestroySessionTimeoutHandle);
+	}
+	DestroySessionTimeoutHandle.Reset();
+}
+
+void UP48MatchmakingSubsystem::ForceRemoveNamedSession(const FName SessionName)
+{
+	if (SessionInterface.IsValid()
+		&& SessionInterface->GetNamedSession(SessionName) != nullptr)
+	{
+		SessionInterface->RemoveNamedSession(SessionName);
+	}
 }
 
 bool UP48MatchmakingSubsystem::IsSessionOperationInProgress() const

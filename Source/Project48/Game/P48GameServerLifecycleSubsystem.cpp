@@ -5,6 +5,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
+#include "HAL/PlatformMisc.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonSerializer.h"
 
@@ -80,17 +81,39 @@ void UP48GameServerLifecycleSubsystem::EndMatch()
 	TickReports(0);
 }
 
+void UP48GameServerLifecycleSubsystem::BeginReload()
+{
+	if (bReloading) return;
+	bReloading = true;
+	bWorldReady = false;
+	ReloadDeadline = FPlatformTime::Seconds() + 60.0;
+	UE_LOG(LogTemp, Display,
+		TEXT("[GameServer] Reload started. WorldReady deadline is 60 seconds."));
+}
+
 void UP48GameServerLifecycleSubsystem::WorldReady()
 {
 	if (bReloading)
 	{
 		bReloading = false;
 		bWorldReady = true;
+		ReloadDeadline = 0.0;
+		UE_LOG(LogTemp, Display, TEXT("[GameServer] Reloaded world is ready."));
 	}
 }
 
 bool UP48GameServerLifecycleSubsystem::TickReports(float DeltaTime)
 {
+	if (bReloading && ReloadDeadline > 0.0
+		&& FPlatformTime::Seconds() >= ReloadDeadline)
+	{
+		ReloadDeadline = 0.0;
+		UE_LOG(LogTemp, Error,
+			TEXT("[GameServer] Reload did not reach WorldReady before the deadline; exiting for service restart."));
+		FPlatformMisc::RequestExitWithStatus(false, 2);
+		return true;
+	}
+
 	// 임시 테스트 코드: HTTP 보고/재시도 없이 맵 재로딩 완료 후에만 다음 매치를 받도록 초기화한다.
 	// 실제 보고 서비스의 매치 종료/서버 준비 통지는 이 모드에서 테스트하지 않는다.
 	if (bLocalServerTest)
@@ -101,6 +124,7 @@ bool UP48GameServerLifecycleSubsystem::TickReports(float DeltaTime)
 			RoomId = INDEX_NONE;
 			ExpectedPlayers = 0;
 			bEnding = bEndAcknowledged = bWorldReady = false;
+			ReloadDeadline = 0.0;
 			NextAttempt = 0;
 			UE_LOG(LogTemp, Display, TEXT("[GameServer] LocalServerTest: reset complete; ready for next match."));
 		}
@@ -151,6 +175,7 @@ void UP48GameServerLifecycleSubsystem::SendReport(const FString& Event)
 				RoomId = INDEX_NONE;
 				ExpectedPlayers = 0;
 				bEnding = bEndAcknowledged = bWorldReady = false;
+				ReloadDeadline = 0.0;
 			}
 		});
 	const FHttpRequestPtr ActiveRequest = Request;
