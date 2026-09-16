@@ -143,9 +143,11 @@ void AP48LobbyPlayerController::Client_TravelToGameServer_Implementation(
 	{
 		Destination += FString::Printf(TEXT("?ExpectedPlayers=%d"), ExpectedPlayers);
 	}
-	if (const APlayerState* LocalPlayerState = PlayerState)
+	if (APlayerState* LocalPlayerState = PlayerState)
 	{
-		const FString Nickname = LocalPlayerState->GetPlayerName().TrimStartAndEnd();
+		AP48PlayerState* P48PS = Cast<AP48PlayerState>(LocalPlayerState);
+		if (IsValid(P48PS) == false) return;
+		const FString Nickname = P48PS->GetNickname().TrimStartAndEnd();
 		if (!Nickname.IsEmpty())
 		{
 			// Name is handled automatically by AGameModeBase and becomes the
