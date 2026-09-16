@@ -5,6 +5,7 @@ chcp 65001 >nul
 rem Project48 local dedicated-server launcher.
 rem Optional overrides:
 rem   set P48_UNREAL_EDITOR=D:\Epic Games\UE_5.7\Engine\Binaries\Win64\UnrealEditor.exe
+rem   set P48_PUBLIC_HOST=152.67.221.82
 rem   set P48_GAME_SERVER_REPORT_PORT=17776
 rem   set P48_GAME_SERVER_REPORT_TOKEN=replace-with-a-local-secret
 
@@ -13,6 +14,7 @@ set "GAME_MAP_FILE=%~dp0Content\MSJ\Maps\P48_FlyingIslandMap.umap"
 set "DRY_RUN=0"
 
 if /I "%~1"=="--dry-run" set "DRY_RUN=1"
+if not defined P48_PUBLIC_HOST set "P48_PUBLIC_HOST=152.67.221.82"
 if not defined P48_GAME_SERVER_REPORT_PORT set "P48_GAME_SERVER_REPORT_PORT=17776"
 if not defined P48_GAME_SERVER_REPORT_TOKEN set "P48_GAME_SERVER_REPORT_TOKEN=project48-local-report-token"
 
@@ -46,7 +48,7 @@ if not defined UE_EDITOR (
 
 set "GAME_URL=/Game/MSJ/Maps/P48_FlyingIslandMap?game=/Game/KSH/Game/BP_P48SurvivalGameMode.BP_P48SurvivalGameMode_C"
 set "LOBBY_URL=/Game/WJS/Lobby/L_Lobby"
-set "GAME_SERVER_ADDRESSES=25.5.238.57:17778,25.5.238.57:17779,25.5.238.57:17780"
+set "GAME_SERVER_ADDRESSES=%P48_PUBLIC_HOST%:17778,%P48_PUBLIC_HOST%:17779,%P48_PUBLIC_HOST%:17780"
 set "GAME_SERVER_REPORT_URL=http://127.0.0.1:%P48_GAME_SERVER_REPORT_PORT%/game-server/report"
 
 echo.
@@ -55,6 +57,7 @@ echo Project48 로컬 서버 실행
 echo ========================================
 echo Unreal:  %UE_EDITOR%
 echo Project: %PROJECT_FILE%
+echo Public:  %P48_PUBLIC_HOST%
 echo Players: supplied by lobby on game start
 echo Report:  %GAME_SERVER_REPORT_URL%
 echo.
@@ -62,21 +65,21 @@ echo.
 if "%DRY_RUN%"=="1" (
     echo [DRY RUN] 실제 서버는 실행하지 않습니다.
     echo.
-    echo Game Server 1: 127.0.0.1:17778
-    echo Game Server 2: 127.0.0.1:17779
-    echo Game Server 3: 127.0.0.1:17780
-    echo Lobby Server:  127.0.0.1:17777
+    echo Game Server 1: %P48_PUBLIC_HOST%:17778
+    echo Game Server 2: %P48_PUBLIC_HOST%:17779
+    echo Game Server 3: %P48_PUBLIC_HOST%:17780
+    echo Lobby Server:  %P48_PUBLIC_HOST%:17777
     exit /b 0
 )
 
 for %%P in (17778 17779 17780) do (
-    echo 게임 서버를 실행합니다: 127.0.0.1:%%P
+    echo 게임 서버를 실행합니다: %P48_PUBLIC_HOST%:%%P
     start "Project48 Game Server %%P" "%UE_EDITOR%" "%PROJECT_FILE%" "%GAME_URL%" -server -log -port=%%P "-GameServerReportUrl=%GAME_SERVER_REPORT_URL%" "-GameServerReportToken=%P48_GAME_SERVER_REPORT_TOKEN%"
     timeout /t 1 /nobreak >nul
 )
 
-echo 로비 서버를 실행합니다: 25.5.238.57:17777
-start "Project48 Lobby Server 17777" "%UE_EDITOR%" "%PROJECT_FILE%" "%LOBBY_URL%" -server -log -port=17777 -NicknameDatabaseServer "-LobbyGameServerAddresses=%GAME_SERVER_ADDRESSES%" "-LobbyReturnAddress=127.0.0.1:17777" "-LobbyGameServerReportPort=%P48_GAME_SERVER_REPORT_PORT%" "-GameServerReportToken=%P48_GAME_SERVER_REPORT_TOKEN%"
+echo 로비 서버를 실행합니다: %P48_PUBLIC_HOST%:17777
+start "Project48 Lobby Server 17777" "%UE_EDITOR%" "%PROJECT_FILE%" "%LOBBY_URL%" -server -log -port=17777 -NicknameDatabaseServer "-LobbyGameServerAddresses=%GAME_SERVER_ADDRESSES%" "-LobbyReturnAddress=%P48_PUBLIC_HOST%:17777" "-LobbyGameServerReportPort=%P48_GAME_SERVER_REPORT_PORT%" "-GameServerReportToken=%P48_GAME_SERVER_REPORT_TOKEN%"
 
 echo.
 echo 서버 실행 요청을 완료했습니다.

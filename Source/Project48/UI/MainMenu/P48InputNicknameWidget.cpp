@@ -23,7 +23,7 @@ void UP48InputNicknameWidget::OnConfirmClicked()
 	APlayerController* OwningPlayer = GetOwningPlayer();
 	if (IsValid(OwningPlayer) == false) return;
 	
-	URL = FString::Printf(TEXT("25.5.238.57:17777?UserID=%s?Nickname=%s"), *UserID, *Nickname);
+	URL = FString::Printf(TEXT("152.67.221.82:17777?UserID=%s?Nickname=%s"), *UserID, *Nickname);
 	
 	OwningPlayer->ClientTravel(URL, ETravelType::TRAVEL_Absolute);
 	
