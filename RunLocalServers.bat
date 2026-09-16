@@ -46,7 +46,7 @@ if not defined UE_EDITOR (
 
 set "GAME_URL=/Game/MSJ/Maps/P48_FlyingIslandMap?game=/Game/KSH/Game/BP_P48SurvivalGameMode.BP_P48SurvivalGameMode_C"
 set "LOBBY_URL=/Game/WJS/Lobby/L_Lobby"
-set "GAME_SERVER_ADDRESSES=127.0.0.1:17778,127.0.0.1:17779,127.0.0.1:17780"
+set "GAME_SERVER_ADDRESSES=25.5.238.57:17778,25.5.238.57:17779,25.5.238.57:17780"
 set "GAME_SERVER_REPORT_URL=http://127.0.0.1:%P48_GAME_SERVER_REPORT_PORT%/game-server/report"
 
 echo.
@@ -75,7 +75,7 @@ for %%P in (17778 17779 17780) do (
     timeout /t 1 /nobreak >nul
 )
 
-echo 로비 서버를 실행합니다: 127.0.0.1:17777
+echo 로비 서버를 실행합니다: 25.5.238.57:17777
 start "Project48 Lobby Server 17777" "%UE_EDITOR%" "%PROJECT_FILE%" "%LOBBY_URL%" -server -log -port=17777 -NicknameDatabaseServer "-LobbyGameServerAddresses=%GAME_SERVER_ADDRESSES%" "-LobbyReturnAddress=127.0.0.1:17777" "-LobbyGameServerReportPort=%P48_GAME_SERVER_REPORT_PORT%" "-GameServerReportToken=%P48_GAME_SERVER_REPORT_TOKEN%"
 
 echo.

@@ -191,9 +191,9 @@ void AP48PlayerCharacter::BeginPlay()
 		MeshComp->bEnablePhysicsOnDedicatedServer = true;
 		MeshComp->SetPhysicsBlendWeight(0.5f);
 		
-		MeshComp->SetAllBodiesBelowSimulatePhysics(TEXT("spine"), true, true);
-		
 		MeshComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+		
+		MeshComp->SetAllBodiesBelowSimulatePhysics(TEXT("spine"), true, true);
 	}
 	
 	if (AbilitySystemComponent)
@@ -220,7 +220,7 @@ void AP48PlayerCharacter::BeginPlay()
 	if (Controller != nullptr)
 	{
 		FRotator StartRot = Controller->GetControlRotation();
-		StartRot.Pitch = -45.0f;
+		StartRot.Pitch = -25.0f;
 		Controller->SetControlRotation(StartRot);
 	}
 	
