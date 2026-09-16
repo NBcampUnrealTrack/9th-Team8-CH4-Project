@@ -24,4 +24,8 @@ struct PROJECT48_API FP48DeathVolumeGenerationSettings
 	/** 입력 Bounds의 최저점 아래로 생성할 사망 볼륨의 두께입니다. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Death Volume", meta = (ClampMin = "1.0", Units = "cm"))
 	float Depth = 1000.0f;
+
+	/** 입력 Bounds 최저점에서 사망 볼륨 상단까지의 간격을 Depth 배수로 지정합니다. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map|Death Volume", meta = (ClampMin = "0.0"))
+	float VerticalOffsetDepthMultiplier = 2.0f;
 };

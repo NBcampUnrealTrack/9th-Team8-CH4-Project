@@ -84,6 +84,7 @@ AP48PlayerCharacter::AP48PlayerCharacter()
 	GetCharacterMovement()->MaxAcceleration = 5000.f;
 	GetCharacterMovement()->GroundFriction = 10.f;
 	GetCharacterMovement()->MaxStepHeight = 10.f;
+	GetCharacterMovement()->JumpZVelocity = 700.f;
 	
 	static ConstructorHelpers::FObjectFinder<USoundBase> JumpSoundFinder(TEXT("/Game/OJH/Resource/Sound/cartoon_jump.cartoon_jump"));
 	if (JumpSoundFinder.Succeeded())
