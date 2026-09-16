@@ -35,5 +35,6 @@ public:
 	void SetErrorText(const FString& InText);
 	
 	UPROPERTY (EditDefaultsOnly, BlueprintReadOnly, Category = "URL")
-	FString URL = TEXT("");
+	FString URL = TEXT("25.5.238.57:17777");
+	//FString URL = TEXT("127.0.0.1:17777");
 };
