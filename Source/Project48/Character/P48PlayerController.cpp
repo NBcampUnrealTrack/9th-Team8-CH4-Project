@@ -8,6 +8,7 @@
 #include "InputMappingContext.h"
 #include "Blueprint/UserWidget.h"
 #include "Project48/Game/P48GameModeBase.h"
+#include "Project48/Lobby/P48LobbyTravelSubsystem.h"
 #include "Project48/Maps/PCG/Common/P48PCGSeedState.h"
 #include "EngineUtils.h"
 #include "Project48/Database/P48NicknameDatabaseSubsystem.h"
@@ -17,6 +18,36 @@
 AP48PlayerController::AP48PlayerController()
 {
 	UIManagerComp = CreateDefaultSubobject<UP48UIManagerComponent>(TEXT("UIManagerComponent"));
+}
+
+void AP48PlayerController::Client_ConfirmGameServerArrival_Implementation(
+	const bool bJoinedAsSpectator)
+{
+	if (UGameInstance* GameInstance = GetGameInstance())
+	{
+		if (UP48LobbyTravelSubsystem* TravelSubsystem =
+			GameInstance->GetSubsystem<UP48LobbyTravelSubsystem>())
+		{
+			TravelSubsystem->ConfirmGameServerArrival();
+		}
+	}
+
+	UE_LOG(LogTemp, Display, TEXT("[GameTravel] Arrival confirmed. Spectator=%s"),
+		bJoinedAsSpectator ? TEXT("true") : TEXT("false"));
+}
+
+void AP48PlayerController::Client_ReturnToLobbyForMapGenerationFailure_Implementation()
+{
+	UE_LOG(LogTemp, Error,
+		TEXT("[P48PCG] Local map generation did not finish within the allowed time; returning to lobby."));
+	if (UGameInstance* GameInstance = GetGameInstance())
+	{
+		if (UP48LobbyTravelSubsystem* TravelSubsystem =
+			GameInstance->GetSubsystem<UP48LobbyTravelSubsystem>())
+		{
+			TravelSubsystem->ReturnToLobby();
+		}
+	}
 }
 
 void AP48PlayerController::SetupInputComponent()

@@ -57,6 +57,7 @@ void AP48DeathFloor::BeginPlay()
 	ApplyRuntimeCollisionSettings();
 	DeathCollision->UpdateOverlaps();
 
+#if ENABLE_DRAW_DEBUG && !UE_BUILD_SHIPPING
 	if (!bDrawDebugBounds)
 	{
 		return;
@@ -85,6 +86,7 @@ void AP48DeathFloor::BeginPlay()
 		static_cast<int32>(DeathCollision->GetCollisionEnabled()),
 		static_cast<int32>(DeathCollision->GetCollisionResponseToChannel(ECC_Pawn)),
 		DeathCollision->GetGenerateOverlapEvents() ? TEXT("true") : TEXT("false"));
+#endif
 }
 
 void AP48DeathFloor::Tick(const float DeltaSeconds)

@@ -43,6 +43,7 @@ protected:
 	virtual bool ShouldCancelCountdown(int32 RemainingParticipants) const override;
 	virtual void ClearMatchTimers() override;
 	virtual bool IsRoundSpawnParticipant(const AP48PlayerState* Player) const override;
+	virtual void AbortMatchForMapGenerationFailure() override;
 
 	// 현재 라운드에 참가할 자격이 있는 플레이어인지 확인
 	bool IsCurrentRoundParticipant(const AP48PlayerState* Player) const;
@@ -92,6 +93,8 @@ private:
 	void FinishMatch(AP48PlayerState* Winner);
 	void RequestLobbyReturn();
 	void TryResetServer();
+	void BeginServerReload();
+	void AttemptServerReload();
 
 	// 서버에서 생성한 규칙 객체 보관
 	UPROPERTY(Transient)
@@ -104,6 +107,10 @@ private:
 	FTimerHandle LogoutCheckTimerHandle;
 	FTimerHandle ReturnLobbyTimerHandle;
 	FTimerHandle ServerResetTimerHandle;
+	FTimerHandle ServerReloadRetryTimerHandle;
+	FString ServerReloadMap;
+	int32 ServerReloadAttempt = 0;
+	bool bServerReloadInProgress = false;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Match")
 	float RoundEndCheckDelay = 0.1f;

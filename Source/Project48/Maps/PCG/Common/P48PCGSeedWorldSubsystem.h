@@ -59,13 +59,27 @@ private:
 	TMap<TWeakObjectPtr<APlayerController>, int32> ReadyControllers;
 	TArray<TWeakObjectPtr<UPCGComponent>> PendingComponents;
 	TArray<TPair<int32, TWeakPtr<FPCGContextHandle>>> PlayerCountWaiters;
+	TSet<TWeakObjectPtr<APlayerController>> PendingMapReadyControllers;
 	int32 LastCompletedRevision = 0;
 	int32 ConfirmedPlayerCount = 0;
+	int32 GraphRetryAttempt = 0;
 	bool bPlayerCountLocked = false;
 	bool bDebugPlayerCountOverride = false;
 	bool bGenerationRunning = false;
+	bool bClientReadinessCutoffPassed = false;
 	FTimerHandle ClientReportTimer;
+	FTimerHandle GraphGenerationWatchdogTimer;
+	FTimerHandle ClientReadinessCutoffTimer;
+	FTimerHandle ClientReadinessEvictionTimer;
 	void TryReportClientCompletion();
+	void HandleGraphGenerationTimeout();
+	void RetryIncompleteGraphs();
+	void RestartServerGeneration();
+	void StartClientReadinessTimers();
+	void HandleClientReadinessCutoff();
+	void HandleClientReadinessEviction();
+	TArray<APlayerController*> GetReadyParticipantControllers() const;
+	void ClearGenerationTimers(bool bClearEvictionTimer = true);
 
 	void HandlePlayerCountChanged(FGameplayTag Channel, const FP48MatchPlayerCountMessage& Message);
 	void BeginGeneration();

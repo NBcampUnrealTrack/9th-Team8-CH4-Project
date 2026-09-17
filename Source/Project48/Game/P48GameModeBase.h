@@ -29,6 +29,12 @@ public:
 	
 	void NotifyPlayerReadyStateChanged();
 	void NotifyMapGenerationReadinessChanged();
+	bool ApplyPCGReadyParticipantRoster(const TArray<APlayerController*>& ReadyControllers,
+		TArray<APlayerController*>& OutExcludedControllers, bool bFinalDeadline);
+	void HandleLatePCGClientReady(APlayerController* PlayerController);
+	void ExpelPCGUnreadyPlayer(APlayerController* PlayerController);
+	virtual void AbortMatchForMapGenerationFailure();
+	bool IsPCGRequiredParticipant(const AP48PlayerState* PlayerState) const;
 	
 protected:
 	// 로비에서 확정하여 이동 옵션으로 전달한 참가 인원
@@ -46,7 +52,29 @@ protected:
 	/* 라운드 종료 상태 유지 시간 */
 	UPROPERTY(EditDefaultsOnly, Category = "Match")
 	float RoundEndDuration = 3.0f;
-	
+
+	// 플레이어 대기 시간
+	UPROPERTY(EditDefaultsOnly, Category = "Match")
+	float InitialArrivalTimeoutSeconds = 30.0f;
+
+	FTimerHandle InitialArrivalTimerHandle;
+
+	bool bLobbyManagedMatch = false;
+	bool bInitialRosterFinalized = false;
+	bool bInitialArrivalDeadlineExpired = false;
+
+	TSet<FGuid> ArrivedMemberIds;
+	TSet<FGuid> FinalizedParticipantIds;
+	TMap<TWeakObjectPtr<APlayerController>, FGuid> MemberIdsByController;
+
+	void StartInitialArrivalTimer();
+	void HandleInitialArrivalTimeout();
+	void TryFinalizeInitialRoster();
+	void FinalizeInitialRoster();
+	int32 GetInitialArrivalCount() const;
+	int32 GetFinalizedParticipantCount() const;
+	bool IsFinalizedParticipant(const APlayerController* PlayerController) const;
+
 	FTimerHandle CountdownTimerHandle;
 	FTimerHandle RoundEndTimerHandle;
 	TArray<TWeakObjectPtr<APlayerController>> PlayersWaitingForMap;

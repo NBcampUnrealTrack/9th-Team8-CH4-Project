@@ -87,6 +87,8 @@ bool FP48PCGDeathVolumeElement::ExecuteInternal(FPCGContext* Context) const
 	const float CoverageScale = FMath::Max(1.0f, Rules.CoverageScale);
 	const float Padding = FMath::Max(0.0f, Rules.HorizontalPadding);
 	const float VolumeDepth = FMath::Max(1.0f, Rules.Depth);
+	const float VerticalOffset = VolumeDepth
+		* FMath::Max(0.0f, Rules.VerticalOffsetDepthMultiplier);
 	const FVector2D MinimumHorizontalSize = Rules.MinimumHorizontalSize.GetAbs();
 	const FVector BoundsSize = CombinedBounds.GetSize();
 	const FVector VolumeSize(
@@ -96,7 +98,7 @@ bool FP48PCGDeathVolumeElement::ExecuteInternal(FPCGContext* Context) const
 	const FVector VolumeCenter(
 		CombinedBounds.GetCenter().X,
 		CombinedBounds.GetCenter().Y,
-		CombinedBounds.Min.Z - VolumeDepth * 0.5f);
+		CombinedBounds.Min.Z - VerticalOffset - VolumeDepth * 0.5f);
 	const FVector BaseBoxSize = AP48DeathFloor::DefaultCollisionExtent * 2.0f;
 
 	FPCGPoint Point;
@@ -126,8 +128,9 @@ bool FP48PCGDeathVolumeElement::ExecuteInternal(FPCGContext* Context) const
 	if (Settings->bLogDiagnostics)
 	{
 		UE_LOG(LogTemp, Display,
-			TEXT("[P48DeathVolume] Center=%s Size=%s InputBounds=%s"),
-			*VolumeCenter.ToCompactString(), *VolumeSize.ToCompactString(), *CombinedBounds.ToString());
+			TEXT("[P48DeathVolume] Center=%s Size=%s TopZ=%.2f InputBounds=%s"),
+			*VolumeCenter.ToCompactString(), *VolumeSize.ToCompactString(),
+			VolumeCenter.Z + VolumeDepth * 0.5f, *CombinedBounds.ToString());
 	}
 
 	return true;

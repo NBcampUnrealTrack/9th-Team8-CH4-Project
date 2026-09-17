@@ -4,7 +4,7 @@
 
 /*void AHSGameStateBase::MulticastReceiveChatMessage_Implementation(const FChatMessage& InChatMessage)
 {
-	/* 추후에 PC변경 #1#
+	// 추후에 PC변경 #1#
 	AHSPlayerController* PC = Cast<AHSPlayerController>(GetWorld()->GetFirstPlayerController());
 	if (IsValid(PC) == false) return;
 	UP48UIManagerComponent* UIManager = PC->FindComponentByClass<UP48UIManagerComponent>();

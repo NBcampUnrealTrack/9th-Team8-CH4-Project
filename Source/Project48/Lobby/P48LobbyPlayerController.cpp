@@ -157,7 +157,11 @@ void AP48LobbyPlayerController::Client_TravelToGameServer_Implementation(
 				TEXT("?Name=%s?Nickname=%s"), *Nickname, *Nickname);
 		}
 	}
-	ClientTravel(Destination, TRAVEL_Absolute);
+	if (!TravelSubsystem->BeginGameServerTravel(Destination))
+	{
+		OnLobbyRequestFailed.Broadcast(
+			FText::FromString(TEXT("Could not start the game server connection.")));
+	}
 }
 
 void AP48LobbyPlayerController::Client_ConfirmLobbyReturn_Implementation()

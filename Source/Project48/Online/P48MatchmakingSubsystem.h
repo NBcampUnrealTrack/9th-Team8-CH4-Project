@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Containers/Ticker.h"
 #include "Interfaces/OnlineSessionInterface.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "P48MatchmakingSubsystem.generated.h"
@@ -90,12 +91,24 @@ public:
 	FP48SessionOperationComplete OnLeaveSessionCompleted;
 
 private:
+	enum class EP48DestroySessionPurpose : uint8
+	{
+		None,
+		UserLeave,
+		JoinFailureCleanup
+	};
+
 	void HandleCreateSessionComplete(FName SessionName, bool bWasSuccessful);
 	void HandleDestroySessionComplete(FName SessionName, bool bWasSuccessful);
 	void HandleFindSessionsComplete(bool bWasSuccessful);
 	void HandleJoinSessionComplete(
 		FName SessionName,
 		EOnJoinSessionCompleteResult::Type Result);
+	bool BeginDestroySession(FName SessionName, EP48DestroySessionPurpose Purpose);
+	void CleanupJoinedSessionAfterTravelFailure(FName SessionName, const TCHAR* Reason);
+	bool HandleDestroySessionTimeout(float DeltaTime);
+	void ClearDestroySessionTimeout();
+	void ForceRemoveNamedSession(FName SessionName);
 	bool IsSessionOperationInProgress() const;
 
 	IOnlineSessionPtr SessionInterface;
@@ -105,5 +118,8 @@ private:
 	FDelegateHandle DestroySessionCompleteDelegateHandle;
 	FDelegateHandle FindSessionsCompleteDelegateHandle;
 	FDelegateHandle JoinSessionCompleteDelegateHandle;
+	FTSTicker::FDelegateHandle DestroySessionTimeoutHandle;
+	EP48DestroySessionPurpose DestroySessionPurpose = EP48DestroySessionPurpose::None;
+	FName PendingDestroySessionName = NAME_None;
 	bool bJoinFirstResultAfterSearch = false;
 };

@@ -22,7 +22,6 @@
 #include "AbilitySystemComponent.h"
 #include "Engine/OverlapResult.h"
 #include "Net/UnrealNetwork.h"
-#include "DrawDebugHelpers.h"
 #include "TimerManager.h"
 
 AP48PlayerCharacter::AP48PlayerCharacter()
@@ -84,6 +83,7 @@ AP48PlayerCharacter::AP48PlayerCharacter()
 	GetCharacterMovement()->MaxAcceleration = 5000.f;
 	GetCharacterMovement()->GroundFriction = 10.f;
 	GetCharacterMovement()->MaxStepHeight = 10.f;
+	GetCharacterMovement()->JumpZVelocity = 700.f;
 	
 	static ConstructorHelpers::FObjectFinder<USoundBase> JumpSoundFinder(TEXT("/Game/OJH/Resource/Sound/cartoon_jump.cartoon_jump"));
 	if (JumpSoundFinder.Succeeded())
@@ -615,10 +615,6 @@ void AP48PlayerCharacter::OnHit(const FVector& HitLocation, const FVector& HitDi
 		{
 			if (CarriedCharacter)
 			{
-				if (bEnableCarryDebug && GEngine)
-				{
-					GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor::Red, TEXT("[Carry Debug] 피격당해 들고 있던 캐릭터를 놓쳤습니다!"));
-				}
 				Server_DropCharacter();
 			}
 			Multicast_OnHit(HitLocation, Impulse);
@@ -823,17 +819,13 @@ void AP48PlayerCharacter::OnStunTagChanged(const struct FGameplayTag CallbackTag
 	{
 		if (bIsStunned && CarriedCharacter)
 		{
-			if (bEnableCarryDebug && GEngine)
-			{
-				GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor::Yellow, TEXT("[Carry Debug] 스턴으로 인해 들고 있던 캐릭터를 놓쳤습니다!"));
-			}
 			Server_DropCharacter();
 		}
 		if (!bIsStunned && CarrierCharacter)
 		{
-			if (bEnableCarryDebug && GEngine)
+			if (bEnableCarryDebug)
 			{
-				GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor::Cyan, TEXT("[Carry Debug] 스턴이 해제되었으나 계속 들려있는 상태를 유지합니다!"));
+				UE_LOG(LogTemp, Log, TEXT("[Carry Debug] 스턴이 해제되었으나 계속 들려있는 상태를 유지합니다!"));
 			}
 		}
 
@@ -866,10 +858,6 @@ void AP48PlayerCharacter::OnStunTagChanged(const struct FGameplayTag CallbackTag
 		if (bIsStunned)
 		{
 			MoveComp->DisableMovement();
-			if (GEngine)
-			{
-				GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Yellow, TEXT("MoveMode: Disable"));
-			}
 		}	
 		else
 		{
@@ -888,10 +876,6 @@ void AP48PlayerCharacter::OnStunTagChanged(const struct FGameplayTag CallbackTag
 						MeshComp->SetPhysicsBlendWeight(0.0f);
 					}
 				}
-				if (GEngine)
-				{
-					GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Cyan, TEXT("MoveMode: Disable (Being Carried)"));
-				}
 			}
 			else
 			{
@@ -901,11 +885,6 @@ void AP48PlayerCharacter::OnStunTagChanged(const struct FGameplayTag CallbackTag
 				{
 					MeshComp->SetAllBodiesBelowSimulatePhysics(TEXT("spine"), true, true);
 					MeshComp->SetPhysicsBlendWeight(0.5f);
-				}
-				
-				if (GEngine)
-				{
-					GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Yellow, TEXT("MoveMode: MOVE_Walking"));
 				}
 			}
 		}
@@ -922,10 +901,6 @@ void AP48PlayerCharacter::EquipWeaponHandle()
 	// 이미 캐릭터를 들고 있다면 내려놓기(Drop) 대신 던지기(Throw) 수행
 	if (CarriedCharacter)
 	{
-		if (bEnableCarryDebug && GEngine)
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Yellow, TEXT("[Carry Debug] 들고 있던 캐릭터를 던집니다."));
-		}
 		if (ThrowMontage)
 		{
 			PlayAnimMontage(ThrowMontage);
@@ -1003,38 +978,22 @@ void AP48PlayerCharacter::EquipWeaponHandle()
 			}
 		}
 	}
-	
-	if (bEnableCarryDebug)
-	{
-		const FColor SphereColor = (ClosestStunnedEnemy || ClosestWeapon) ? FColor::Green : FColor::Cyan;
-		DrawDebugSphere(GetWorld(), Center, SearchRadius, 16, SphereColor, false, 1.5f, 0, 1.5f);
-	}
 
 	if (ClosestStunnedEnemy && (MinEnemyDist < MinWeaponDist || !ClosestWeapon))
 	{
-		if (bEnableCarryDebug && GEngine)
-		{
-			const FString Msg = FString::Printf(TEXT("[Carry Debug] 스턴 적 감지 성공: %s (거리: %.1f)"), *ClosestStunnedEnemy->GetName(), FMath::Sqrt(MinEnemyDist));
-			GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor::Green, Msg);
-		}
 		UE_LOG(LogTemp, Warning, TEXT("[Client]: 스턴 적 발견: %s -> Server_PickUpCharacter 호출"), *ClosestStunnedEnemy->GetName());
 		Server_PickUpCharacter(ClosestStunnedEnemy);
 	}
 	else if (ClosestWeapon)
 	{
-		if (bEnableCarryDebug && GEngine)
-		{
-			const FString Msg = FString::Printf(TEXT("[Carry Debug] 무기 감지 성공: %s (거리: %.1f)"), *ClosestWeapon->GetName(), FMath::Sqrt(MinWeaponDist));
-			GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor::Cyan, Msg);
-		}
 		UE_LOG(LogTemp, Warning, TEXT("[Client]: 무기 발견: %s -> Server_EquipWeapon호출"), *ClosestWeapon->GetName());
 		Server_EquipWeapon(ClosestWeapon);
 	}
 	else
 	{
-		if (bEnableCarryDebug && GEngine)
+		if (bEnableCarryDebug)
 		{
-			GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor::Silver, TEXT("[Carry Debug] 탐색 반경(150) 내에 무기나 스턴 적이 없습니다."));
+			UE_LOG(LogTemp, Log, TEXT("[Carry Debug] 탐색 반경(150) 내에 무기나 스턴 적이 없습니다."));
 		}
 	}
 }
@@ -1260,12 +1219,7 @@ void AP48PlayerCharacter::Server_PickUpCharacter_Implementation(AP48PlayerCharac
 	TargetCharacter->OnRep_CarrierCharacter();
 
 	TargetCharacter->OnPickedUpBy(this);
-
-	if (bEnableCarryDebug && GEngine)
-	{
-		const FString Msg = FString::Printf(TEXT("[Server]: %s -> %s 오른손(handslot_r) 들기 성공"), *GetName(), *TargetCharacter->GetName());
-		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Emerald, Msg);
-	}
+	
 	UE_LOG(LogTemp, Warning, TEXT("[Server] %s가 %s를 오른손에 들었습니다."), *GetName(), *TargetCharacter->GetName());
 }
 
@@ -1293,16 +1247,6 @@ void AP48PlayerCharacter::Server_ThrowCharacter_Implementation()
 	// 캐리어 전방 100cm, 지면 위 40cm 여유 공간의 안전한 공중 릴리즈 위치 계산
 	const FVector SafeReleaseLocation = GetActorLocation() + (Forward * 100.0f) + FVector(0.f, 0.f, 40.0f);
 	const FRotator SafeReleaseRotation = FRotator(0.0f, GetActorRotation().Yaw, 0.0f);
-
-	if (bEnableCarryDebug)
-	{
-		DrawDebugDirectionalArrow(GetWorld(), SafeReleaseLocation, SafeReleaseLocation + ThrowVelocity.GetSafeNormal() * 200.f, 40.0f, FColor::Red, false, 2.5f, 0, 3.0f);
-		if (GEngine)
-		{
-			const FString Msg = FString::Printf(TEXT("[Server]: %s -> %s 래그돌 던지기 발동 (속도: %.1f)"), *GetName(), *ThrowTarget->GetName(), ThrowVelocity.Size());
-			GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, Msg);
-		}
-	}
 
 	// 1. 모든 클라이언트에 풀 래그돌 상태로 던지기 실행
 	ThrowTarget->Multicast_OnThrown(SafeReleaseLocation, SafeReleaseRotation, ThrowVelocity, this);
@@ -1341,12 +1285,6 @@ void AP48PlayerCharacter::Server_DropCharacter_Implementation()
 	const FVector Forward = GetActorForwardVector();
 	const FVector SafeDropLocation = GetActorLocation() + (Forward * 75.0f);
 	const FRotator SafeDropRotation = FRotator(0.0f, GetActorRotation().Yaw, 0.0f);
-
-	if (bEnableCarryDebug && GEngine)
-	{
-		const FString Msg = FString::Printf(TEXT("[Server]: %s -> %s 내려놓기"), *GetName(), *DroppedTarget->GetName());
-		GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor::Yellow, Msg);
-	}
 
 	DroppedTarget->Multicast_OnDropped(SafeDropLocation, SafeDropRotation, this);
 
@@ -1456,14 +1394,6 @@ void AP48PlayerCharacter::OnRep_CarrierCharacter()
 		// 4. 먼저 올바른 위치와 회전으로 이동시킨 뒤, 월드 트랜스폼을 유지(KeepWorldTransform)하며 소켓에 부착
 		SetActorLocationAndRotation(TargetWorldLocation, TargetWorldRotation);
 		AttachToComponent(CarrierCharacter->GetMesh(), FAttachmentTransformRules::KeepWorldTransform, SocketToUse);
-
-		if (bEnableCarryDebug && GEngine)
-		{
-			const FString Msg = FString::Printf(TEXT("[%s] %s의 [%s] 소켓에 부착 완료! (Ragdoll: %.2f)"), 
-				*GetName(), *CarrierCharacter->GetName(), *SocketToUse.ToString(), bEnableCarriedRagdoll ? CarriedPhysicsBlendWeight : 0.0f);
-			GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Green, Msg);
-			DrawDebugCoordinateSystem(GetWorld(), TargetWorldLocation, TargetWorldRotation, 40.0f, false, 3.0f);
-		}
 	}
 	else
 	{
@@ -1485,12 +1415,6 @@ void AP48PlayerCharacter::OnRep_CarrierCharacter()
 			MeshComp->SetAllBodiesBelowSimulatePhysics(CarriedPhysicsBoneName, true, true);
 			MeshComp->bBlendPhysics = true;
 			MeshComp->SetPhysicsBlendWeight(0.5f);
-		}
-
-		if (bEnableCarryDebug && GEngine)
-		{
-			const FString Msg = FString::Printf(TEXT("[%s] Carrier로부터 분리(Detach) 완료"), *GetName());
-			GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor::Orange, Msg);
 		}
 	}
 }
@@ -1588,12 +1512,6 @@ void AP48PlayerCharacter::Multicast_OnThrown_Implementation(const FVector& Relea
 	// 7. 래그돌 비행 추적 활성화 (카메라가 날아가는 래그돌 골반을 실시간 추적)
 	bIsInThrownRagdoll = true;
 	SetActorTickEnabled(true);
-
-	if (bEnableCarryDebug && GEngine)
-	{
-		const FString Msg = FString::Printf(TEXT("[%s] 파티 애니멀즈 풀 래그돌 비행 시작! (속도: %s)"), *GetName(), *ThrowVelocity.ToString());
-		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, Msg);
-	}
 }
 
 void AP48PlayerCharacter::Server_RecoverFromRagdoll()
@@ -1716,12 +1634,6 @@ void AP48PlayerCharacter::Multicast_RecoverFromRagdoll_Implementation(const FVec
 	{
 		PlayAnimMontage(GetUpMontage);
 	}
-
-	if (bEnableCarryDebug && GEngine)
-	{
-		const FString Msg = FString::Printf(TEXT("[%s] 래그돌에서 회복하여 다시 일어남!"), *GetName());
-		GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor::Green, Msg);
-	}
 }
 
 void AP48PlayerCharacter::Multicast_OnDropped_Implementation(const FVector& DropLocation, const FRotator& DropRotation, AP48PlayerCharacter* InCarrier)
@@ -1762,12 +1674,6 @@ void AP48PlayerCharacter::Multicast_OnDropped_Implementation(const FVector& Drop
 			MoveComp->SetMovementMode(MOVE_Walking);
 			SetInputBlocked(false);
 		}
-	}
-
-	if (bEnableCarryDebug && GEngine)
-	{
-		const FString Msg = FString::Printf(TEXT("[%s] 바닥에 내려놓아짐"), *GetName());
-		GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor::Yellow, Msg);
 	}
 }
 

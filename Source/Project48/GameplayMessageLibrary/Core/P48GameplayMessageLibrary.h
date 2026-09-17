@@ -60,7 +60,7 @@ public:
 		Params.MatchType = MatchType;
 		Params.SetMessageReceivedCallback(Listener, Handler);
 
-		return UGameplayMessageSubsystem::Get(Listener).RegisterListener<TPayload>(Channel, Params);
+		return UGameplayMessageSubsystem::Get(Listener).template RegisterListener<TPayload>(Channel, Params);
 	}
 
 	/** Payload를 받지 않는 멤버 함수로 단순 이벤트 채널을 구독합니다. */
@@ -82,7 +82,7 @@ public:
 		}
 
 		TWeakObjectPtr<TListener> WeakListener(Listener);
-		return UGameplayMessageSubsystem::Get(Listener).RegisterListener<FP48EmptyMessage>(
+		return UGameplayMessageSubsystem::Get(Listener).template RegisterListener<FP48EmptyMessage>(
 			Channel,
 			[WeakListener, Handler](const FGameplayTag ActualChannel, const FP48EmptyMessage&)
 			{
